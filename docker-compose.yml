@@ -1,0 +1,53 @@
+services:
+  kairos-postgres:
+    image: pgvector/pgvector:pg17
+    container_name: kairos-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: kairos_user
+      POSTGRES_PASSWORD: kairos_password
+      POSTGRES_DB: kairos_db
+    ports:
+      - "5435:5432"
+    volumes:
+      - kairos_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U kairos_user -d kairos_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  kairos-redis:
+    image: redis:7-alpine
+    container_name: kairos-redis
+    restart: unless-stopped
+    ports:
+      - "6381:6379"
+    volumes:
+      - kairos_redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  kairos-temporal:
+    image: temporalio/temporal:1.8.2
+    container_name: kairos-temporal
+    restart: unless-stopped
+    command: ["server", "start-dev", "--port", "7234", "--ui-port", "8234", "--db-filename", "/tmp/temporal.db"]
+    ports:
+      - "7234:7234"
+      - "8234:8234"
+    volumes:
+      - kairos_temporaldata:/data
+    healthcheck:
+      test: ["CMD", "nc", "-z", "localhost", "7234"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  kairos_pgdata:
+  kairos_redisdata:
+  kairos_temporaldata:
