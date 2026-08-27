@@ -59,10 +59,20 @@ class ActionItem(BaseModel):
 class ActionItemDecision(BaseModel):
     """Human-in-the-loop decision per action item."""
     item_id: str
-    decision: DecisionAction
+    decision: DecisionAction = "APPROVE"
+    action: DecisionAction | None = None
     override_tool: TargetTool | None = None
     modified_payload: dict[str, Any] | None = None
     rejection_reason: str | None = None
+
+    @classmethod
+    def model_validate(cls, obj: Any, **kwargs):
+        if isinstance(obj, dict):
+            if "action" in obj and ("decision" not in obj or not obj.get("decision")):
+                obj["decision"] = obj["action"]
+            elif "decision" in obj and ("action" not in obj or not obj.get("action")):
+                obj["action"] = obj["decision"]
+        return super().model_validate(obj, **kwargs)
 
 
 class ActionItemApprovalRequest(BaseModel):
