@@ -1,4 +1,4 @@
-"""MCP Client Manager: Central dispatcher, idempotency engine, and execution logger."""
+from datetime import datetime, timezone
 import json
 import hashlib
 import uuid
@@ -111,6 +111,8 @@ class McpClientManager:
                 action_item.status = "executed" if result.status == "success" else "failed"
                 action_item.external_url = result.external_url
                 action_item.final_tool = tool
+                if result.status == "success":
+                    action_item.executed_at = datetime.now(timezone.utc)
 
             await session.commit()
 

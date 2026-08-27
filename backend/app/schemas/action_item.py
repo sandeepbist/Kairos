@@ -1,5 +1,4 @@
-"""Core action item, batch, and decision models."""
-from datetime import datetime, date
+from datetime import datetime, date, timezone
 from typing import Literal, Any, Union
 import uuid
 from pydantic import BaseModel, Field
@@ -53,7 +52,7 @@ class ActionItem(BaseModel):
     external_url: str | None = None
     rejection_reason: str | None = None
     executed_at: datetime | None = None
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 class ActionItemDecision(BaseModel):

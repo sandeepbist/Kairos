@@ -78,7 +78,7 @@ class ProcessBatchWorkflow:
         execution_results = []
         for decision in self._decisions:
             item_id = decision["item_id"]
-            action = decision.get("action", "APPROVE")
+            action = decision.get("action") or decision.get("decision") or "APPROVE"
             rejection_reason = decision.get("rejection_reason")
 
             # Find matching item in routed_items
