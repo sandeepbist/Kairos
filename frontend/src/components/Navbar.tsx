@@ -13,67 +13,79 @@ export function Navbar() {
   useEffect(() => {
     getConnectorsStatus()
       .then(setStatus)
-      .catch(() => {
-        // Fallback default status if backend is polling
-        setStatus({
-          sandbox_mode: true,
-          connectors: {
-            notion: { healthy: true, sandbox_mode: true, oauth_connected: true, type: "official_mcp" },
-            jira: { healthy: true, sandbox_mode: true, oauth_connected: true, type: "official_mcp" },
-            calendar: { healthy: true, sandbox_mode: true, oauth_connected: true, type: "official_mcp" },
-            task_ledger: { healthy: true, sandbox_mode: true, oauth_connected: true, type: "custom_internal" },
-          },
-        });
-      });
+      .catch(() => {});
   }, []);
 
   const navLinks = [
-    { href: "/", label: "Ingest & Extract" },
-    { href: "/history", label: "Execution History" },
-    { href: "/settings", label: "Connectors & Sandbox" },
+    { href: "/", label: "Ingest" },
+    { href: "/history", label: "History" },
+    { href: "/settings", label: "Settings" },
   ];
 
   return (
-    <header style={{
-      borderBottom: "1px solid var(--border-subtle)",
-      background: "rgba(8, 11, 17, 0.85)",
-      backdropFilter: "blur(12px)",
-      position: "sticky",
-      top: 0,
-      zIndex: 50,
-    }}>
-      <div className="container" style={{
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "space-between",
-        height: "64px",
-      }}>
+    <header
+      style={{
+        borderBottom: "1px solid var(--border-subtle)",
+        background: "rgba(0, 0, 0, 0.8)",
+        backdropFilter: "blur(20px)",
+        WebkitBackdropFilter: "blur(20px)",
+        position: "sticky",
+        top: 0,
+        zIndex: 50,
+      }}
+    >
+      <div
+        className="container"
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          height: "60px",
+          paddingTop: 0,
+          paddingBottom: 0,
+        }}
+      >
         {/* Brand */}
-        <div style={{ display: "flex", alignItems: "center", gap: "2rem" }}>
-          <Link href="/" style={{ display: "flex", alignItems: "center", gap: "0.6rem" }}>
-            <div style={{
-              width: "32px",
-              height: "32px",
-              borderRadius: "8px",
-              background: "linear-gradient(135deg, #38bdf8, #6366f1)",
+        <div style={{ display: "flex", alignItems: "center", gap: "2.5rem" }}>
+          <Link
+            href="/"
+            style={{
               display: "flex",
               alignItems: "center",
-              justifyContent: "center",
-              boxShadow: "0 0 12px rgba(56, 189, 248, 0.4)",
-              fontWeight: 800,
-              fontSize: "1rem",
-              color: "#fff",
-            }}>
+              gap: "0.6rem",
+              textDecoration: "none",
+            }}
+          >
+            <div
+              style={{
+                width: "24px",
+                height: "24px",
+                borderRadius: "6px",
+                background: "#ffffff",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                fontWeight: 700,
+                fontSize: "0.85rem",
+                color: "#000000",
+              }}
+            >
               K
             </div>
-            <div>
-              <span style={{ fontWeight: 700, fontSize: "1.1rem", letterSpacing: "-0.02em" }}>Kairos</span>
-              <span style={{ fontSize: "0.75rem", color: "var(--text-muted)", marginLeft: "0.4rem" }}>Ambient Action Agent</span>
-            </div>
+            <span
+              style={{
+                fontWeight: 600,
+                fontSize: "0.95rem",
+                letterSpacing: "-0.03em",
+                color: "#ffffff",
+              }}
+            >
+              Kairos
+            </span>
           </Link>
 
           {/* Navigation Links */}
-          <nav style={{ display: "flex", gap: "0.5rem" }}>
+          <nav style={{ display: "flex", gap: "0.25rem" }}>
             {navLinks.map((link) => {
               const active = pathname === link.href;
               return (
@@ -81,13 +93,14 @@ export function Navbar() {
                   key={link.href}
                   href={link.href}
                   style={{
-                    padding: "0.4rem 0.8rem",
+                    padding: "0.35rem 0.75rem",
                     borderRadius: "6px",
-                    fontSize: "0.875rem",
-                    fontWeight: active ? 600 : 500,
-                    color: active ? "var(--accent-cyan)" : "var(--text-secondary)",
-                    background: active ? "rgba(56, 189, 248, 0.1)" : "transparent",
+                    fontSize: "0.85rem",
+                    fontWeight: active ? 600 : 400,
+                    color: active ? "#ffffff" : "var(--text-secondary)",
+                    background: active ? "rgba(255, 255, 255, 0.08)" : "transparent",
                     transition: "all 0.15s ease",
+                    textDecoration: "none",
                   }}
                 >
                   {link.label}
@@ -97,43 +110,38 @@ export function Navbar() {
           </nav>
         </div>
 
-        {/* Connector Health Badges */}
+        {/* Live Ecosystem Status */}
         <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
-          {status?.sandbox_mode && (
-            <span style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: "0.3rem",
-              fontSize: "0.7rem",
-              fontWeight: 700,
-              background: "rgba(245, 158, 11, 0.15)",
-              color: "#fbbf24",
-              border: "1px solid rgba(245, 158, 11, 0.3)",
-              padding: "0.2rem 0.6rem",
-              borderRadius: "9999px",
-            }}>
-              ⚡ SANDBOX MODE
-            </span>
-          )}
+          <div className="pill" style={{ fontSize: "0.75rem", padding: "0.2rem 0.55rem" }}>
+            <span className="dot dot-green" />
+            <span>Notion</span>
+          </div>
+          <div className="pill" style={{ fontSize: "0.75rem", padding: "0.2rem 0.55rem" }}>
+            <span className="dot dot-green" />
+            <span>Jira</span>
+          </div>
+          <div className="pill" style={{ fontSize: "0.75rem", padding: "0.2rem 0.55rem" }}>
+            <span className="dot dot-green" />
+            <span>Calendar</span>
+          </div>
+          <div className="pill" style={{ fontSize: "0.75rem", padding: "0.2rem 0.55rem" }}>
+            <span className="dot dot-green" />
+            <span>Task Ledger</span>
+          </div>
 
-          <div style={{ display: "flex", gap: "0.4rem", alignItems: "center" }}>
-            <span title="Notion MCP Server" style={badgeStyle("#c084fc")}>Notion 🟢</span>
-            <span title="Jira Atlassian Rovo MCP" style={badgeStyle("#60a5fa")}>Jira 🟢</span>
-            <span title="Google Calendar MCP" style={badgeStyle("#34d399")}>Calendar 🟢</span>
-            <span title="Custom Task Ledger MCP" style={badgeStyle("#fbbf24")}>Ledger 🟢</span>
+          <div
+            className="pill"
+            style={{
+              fontSize: "0.7rem",
+              background: status?.sandbox_mode ? "rgba(245, 158, 11, 0.1)" : "rgba(16, 185, 129, 0.1)",
+              borderColor: status?.sandbox_mode ? "rgba(245, 158, 11, 0.2)" : "rgba(16, 185, 129, 0.2)",
+              color: status?.sandbox_mode ? "#fbbf24" : "#34d399",
+            }}
+          >
+            {status?.sandbox_mode ? "Sandbox" : "Live MCP"}
           </div>
         </div>
       </div>
     </header>
   );
 }
-
-const badgeStyle = (color: string) => ({
-  fontSize: "0.7rem",
-  fontWeight: 600,
-  background: "rgba(255, 255, 255, 0.04)",
-  color,
-  border: "1px solid rgba(255, 255, 255, 0.08)",
-  padding: "0.2rem 0.5rem",
-  borderRadius: "6px",
-});

@@ -49,29 +49,33 @@ export function PayloadModal({
       style={{
         position: "fixed",
         inset: 0,
-        background: "rgba(0, 0, 0, 0.75)",
-        backdropFilter: "blur(8px)",
+        background: "rgba(0, 0, 0, 0.8)",
+        backdropFilter: "blur(12px)",
+        WebkitBackdropFilter: "blur(12px)",
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
         zIndex: 100,
-        padding: "1rem",
+        padding: "1.5rem",
       }}
     >
-      <div className="glass-panel" style={{
-        width: "100%",
-        maxWidth: "560px",
-        padding: "1.75rem",
-        border: "1px solid var(--border-active)",
-        boxShadow: "0 20px 40px rgba(0, 0, 0, 0.6)",
-      }}>
+      <div
+        className="card-elevated"
+        style={{
+          width: "100%",
+          maxWidth: "520px",
+          padding: "1.75rem",
+          border: "1px solid var(--border-medium)",
+          background: "var(--bg-elevated)",
+        }}
+      >
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1.25rem" }}>
           <div>
-            <h3 style={{ fontSize: "1.15rem", fontWeight: 700 }}>
-              Edit {targetTool.toUpperCase()} Payload
+            <h3 style={{ fontSize: "1.1rem", fontWeight: 600, letterSpacing: "-0.02em", color: "#ffffff" }}>
+              Configure {targetTool.toUpperCase()} Payload
             </h3>
-            <p style={{ fontSize: "0.8rem", color: "var(--text-secondary)" }}>
-              Customize tool parameters before dispatching execution.
+            <p style={{ fontSize: "0.8rem", color: "var(--text-secondary)", marginTop: "0.15rem" }}>
+              Modify parameters before dispatching execution.
             </p>
           </div>
           <button
@@ -81,7 +85,7 @@ export function PayloadModal({
               border: "none",
               color: "var(--text-muted)",
               cursor: "pointer",
-              fontSize: "1.2rem",
+              fontSize: "1.1rem",
             }}
           >
             ✕
@@ -151,7 +155,7 @@ export function PayloadModal({
                 />
               </div>
               <div>
-                <label style={labelStyle}>Start Time (ISO 8601)</label>
+                <label style={labelStyle}>Start Time (ISO)</label>
                 <input
                   type="text"
                   value={payload.start_time || ""}
@@ -160,11 +164,21 @@ export function PayloadModal({
                 />
               </div>
               <div>
-                <label style={labelStyle}>End Time (ISO 8601)</label>
+                <label style={labelStyle}>End Time (ISO)</label>
                 <input
                   type="text"
                   value={payload.end_time || ""}
                   onChange={(e) => handleChange("end_time", e.target.value)}
+                  style={inputStyle}
+                />
+              </div>
+              <div>
+                <label style={labelStyle}>Attendee Email</label>
+                <input
+                  type="text"
+                  value={payload.attendees?.[0] || ""}
+                  onChange={(e) => handleChange("attendees", e.target.value ? [e.target.value] : [])}
+                  placeholder="name@company.com"
                   style={inputStyle}
                 />
               </div>
@@ -175,7 +189,7 @@ export function PayloadModal({
           {targetTool === "notion" && (
             <>
               <div>
-                <label style={labelStyle}>Database ID</label>
+                <label style={labelStyle}>Target Database ID</label>
                 <input
                   type="text"
                   value={payload.database_id || "roadmap_db"}
@@ -189,6 +203,15 @@ export function PayloadModal({
                   type="text"
                   value={payload.title || ""}
                   onChange={(e) => handleChange("title", e.target.value)}
+                  style={inputStyle}
+                />
+              </div>
+              <div>
+                <label style={labelStyle}>Details / Context</label>
+                <textarea
+                  value={payload.details || payload.description || ""}
+                  onChange={(e) => handleChange("details", e.target.value)}
+                  rows={3}
                   style={inputStyle}
                 />
               </div>
@@ -208,6 +231,15 @@ export function PayloadModal({
                 />
               </div>
               <div>
+                <label style={labelStyle}>Notes</label>
+                <textarea
+                  value={payload.notes || ""}
+                  onChange={(e) => handleChange("notes", e.target.value)}
+                  rows={3}
+                  style={inputStyle}
+                />
+              </div>
+              <div>
                 <label style={labelStyle}>Priority</label>
                 <select
                   value={payload.priority || "medium"}
@@ -223,12 +255,23 @@ export function PayloadModal({
           )}
         </div>
 
-        <div style={{ display: "flex", justifyContent: "flex-end", gap: "0.75rem", marginTop: "1.5rem" }}>
-          <button className="btn btn-secondary" onClick={onClose}>
+        {/* Modal Buttons */}
+        <div style={{ display: "flex", justifyContent: "flex-end", gap: "0.5rem", marginTop: "1.5rem" }}>
+          <button
+            type="button"
+            className="btn btn-secondary"
+            onClick={onClose}
+            style={{ fontSize: "0.85rem" }}
+          >
             Cancel
           </button>
-          <button className="btn btn-primary" onClick={handleSave}>
-            Save Payload Changes
+          <button
+            type="button"
+            className="btn btn-primary"
+            onClick={handleSave}
+            style={{ fontSize: "0.85rem" }}
+          >
+            Save Changes
           </button>
         </div>
       </div>
@@ -236,23 +279,23 @@ export function PayloadModal({
   );
 }
 
-const labelStyle = {
+const labelStyle: React.CSSProperties = {
   display: "block",
   fontSize: "0.75rem",
   fontWeight: 600,
   color: "var(--text-secondary)",
   marginBottom: "0.35rem",
-  textTransform: "uppercase" as const,
-  letterSpacing: "0.04em",
+  letterSpacing: "-0.01em",
 };
 
-const inputStyle = {
+const inputStyle: React.CSSProperties = {
   width: "100%",
-  padding: "0.6rem 0.8rem",
+  padding: "0.45rem 0.75rem",
+  borderRadius: "6px",
   background: "rgba(0, 0, 0, 0.4)",
   border: "1px solid var(--border-subtle)",
-  borderRadius: "6px",
   color: "var(--text-primary)",
-  fontSize: "0.875rem",
+  fontSize: "0.85rem",
+  outline: "none",
   fontFamily: "inherit",
 };

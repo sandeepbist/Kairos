@@ -3,7 +3,7 @@
 import React, { useEffect, useState, use } from "react";
 import { useRouter } from "next/navigation";
 import { getBatch, approveBatch } from "@/lib/api";
-import { BatchResponse, ActionItemDecision, ActionItem } from "@/lib/types";
+import { BatchResponse, ActionItemDecision } from "@/lib/types";
 import { ActionCard } from "@/components/ActionCard";
 import { SourceSnippetViewer } from "@/components/SourceSnippetViewer";
 
@@ -32,7 +32,6 @@ export default function ReviewPage({
         setBatch(data);
         if (data.status === "awaiting_approval" || data.status === "completed") {
           setLoading(false);
-          // Initialize default approvals if not yet populated
           setDecisions((prev) => {
             if (Object.keys(prev).length === 0 && data.items.length > 0) {
               const initialMap: Record<string, ActionItemDecision> = {};
@@ -133,25 +132,14 @@ export default function ReviewPage({
 
   if (loading && (!batch || batch.status === "processing")) {
     return (
-      <div className="container" style={{ textAlign: "center", padding: "6rem 0" }}>
-        <div className="pulse-indicator" style={{ fontSize: "3rem", marginBottom: "1rem" }}>⚡</div>
-        <h2 style={{ fontSize: "1.5rem", fontWeight: 700 }}>Extracting & Routing Action Items...</h2>
-        <p style={{ color: "var(--text-secondary)", marginTop: "0.5rem" }}>
-          LangGraph is analyzing commitments, provenance snippets, and Mem0 routing memory.
+      <div className="container" style={{ textAlign: "center", padding: "8rem 0" }}>
+        <div style={{ fontSize: "2rem", marginBottom: "1rem" }}>⚡</div>
+        <h2 style={{ fontSize: "1.25rem", fontWeight: 600, color: "#ffffff" }}>
+          Extracting & Routing Action Items...
+        </h2>
+        <p style={{ color: "var(--text-secondary)", fontSize: "0.9rem", marginTop: "0.5rem" }}>
+          Analyzing commitments, speakers, verbatim quotes, and tool targets.
         </p>
-      </div>
-    );
-  }
-
-  if (error && !batch) {
-    return (
-      <div className="container" style={{ textAlign: "center", padding: "6rem 0" }}>
-        <div style={{ fontSize: "3rem", marginBottom: "1rem" }}>⚠️</div>
-        <h2 style={{ fontSize: "1.5rem", fontWeight: 700, color: "#fb7185" }}>Could not load batch</h2>
-        <p style={{ color: "var(--text-secondary)", marginTop: "0.5rem" }}>{error}</p>
-        <button onClick={() => router.push("/")} className="btn btn-secondary" style={{ marginTop: "1.5rem" }}>
-          Return to Ingest
-        </button>
       </div>
     );
   }
@@ -160,84 +148,99 @@ export default function ReviewPage({
   const rejectedCount = Object.values(decisions).filter((d) => d.action === "REJECT").length;
 
   return (
-    <div className="container" style={{ maxWidth: "1400px" }}>
-      {/* Top Review Header & Bulk Actions Bar */}
-      <div style={{
-        display: "flex",
-        justifyContent: "space-between",
-        alignItems: "center",
-        flexWrap: "wrap",
-        gap: "1rem",
-        marginBottom: "1.5rem",
-        paddingBottom: "1.25rem",
-        borderBottom: "1px solid var(--border-subtle)",
-      }}>
+    <div className="container" style={{ maxWidth: "1280px", paddingBottom: "8rem" }}>
+      {/* Top Banner */}
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          marginBottom: "1.75rem",
+          flexWrap: "wrap",
+          gap: "1rem",
+        }}
+      >
         <div>
-          <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
-            <h1 style={{ fontSize: "1.5rem", fontWeight: 700 }}>Review & Approve Action Items</h1>
-            <span className="badge" style={{ background: "rgba(56, 189, 248, 0.15)", color: "#38bdf8" }}>
-              Batch: {batchId.slice(0, 8)}
+          <div style={{ display: "flex", alignItems: "center", gap: "0.6rem" }}>
+            <h1 className="heading-title">Human Verification Workbench</h1>
+            <span className="pill" style={{ fontSize: "0.75rem" }}>
+              Batch {batchId.slice(0, 8)}
             </span>
           </div>
-          <p style={{ fontSize: "0.85rem", color: "var(--text-secondary)", marginTop: "0.25rem" }}>
-            Verify extracted items against source quotes on the left. Hover any card to highlight its source snippet.
+          <p style={{ color: "var(--text-secondary)", fontSize: "0.85rem", marginTop: "0.25rem" }}>
+            Hover over any action item to view its synchronized quote in the original transcript.
           </p>
         </div>
 
-        {/* Action Controls */}
-        <div style={{ display: "flex", gap: "0.5rem", alignItems: "center", flexWrap: "wrap" }}>
-          <button onClick={handleApproveHighConfidence} className="btn btn-secondary" style={{ fontSize: "0.8rem", padding: "0.4rem 0.75rem" }}>
+        {/* Quick Bulk Action Buttons */}
+        <div style={{ display: "flex", gap: "0.4rem", flexWrap: "wrap" }}>
+          <button
+            type="button"
+            className="btn btn-secondary"
+            onClick={handleApproveHighConfidence}
+            style={{ fontSize: "0.75rem", padding: "0.35rem 0.75rem" }}
+          >
             Approve High Confidence (&ge;85%)
           </button>
-          <button onClick={handleApproveAll} className="btn btn-secondary" style={{ fontSize: "0.8rem", padding: "0.4rem 0.75rem" }}>
+          <button
+            type="button"
+            className="btn btn-secondary"
+            onClick={handleApproveAll}
+            style={{ fontSize: "0.75rem", padding: "0.35rem 0.75rem" }}
+          >
             Approve All ({batch?.items.length || 0})
           </button>
-          <button onClick={handleRejectAll} className="btn btn-secondary" style={{ fontSize: "0.8rem", padding: "0.4rem 0.75rem" }}>
-            Reject All
-          </button>
           <button
-            onClick={handleSubmitApprovals}
-            disabled={submitting}
-            className="btn btn-primary"
-            style={{ padding: "0.5rem 1.5rem", fontSize: "0.9rem" }}
+            type="button"
+            className="btn btn-secondary"
+            onClick={handleRejectAll}
+            style={{ fontSize: "0.75rem", padding: "0.35rem 0.75rem" }}
           >
-            {submitting ? "Dispatching..." : `🚀 Execute (${approvedCount} Approved, ${rejectedCount} Rejected)`}
+            Dismiss All
           </button>
         </div>
       </div>
 
       {error && (
-        <div style={{
-          padding: "0.75rem 1rem",
-          borderRadius: "6px",
-          background: "rgba(244, 63, 94, 0.15)",
-          border: "1px solid rgba(244, 63, 94, 0.3)",
-          color: "#fb7185",
-          fontSize: "0.875rem",
-          marginBottom: "1.5rem",
-        }}>
-          ⚠️ {error}
+        <div
+          style={{
+            padding: "0.75rem 1rem",
+            borderRadius: "8px",
+            background: "rgba(244, 63, 94, 0.1)",
+            border: "1px solid rgba(244, 63, 94, 0.25)",
+            color: "#fb7185",
+            fontSize: "0.85rem",
+            marginBottom: "1.5rem",
+          }}
+        >
+          {error}
         </div>
       )}
 
-      {/* Side-by-Side Review Grid */}
-      <div style={{
-        display: "grid",
-        gridTemplateColumns: "1fr 1.25fr",
-        gap: "1.5rem",
-        alignItems: "start",
-      }}>
-        {/* Left Column: Synchronized Source Viewer */}
-        <div>
-          <SourceSnippetViewer
-            rawText={batch?.raw_text || ""}
-            sourceType={batch?.source_type || "meeting_transcript"}
-            activeSnippet={hoveredSnippet}
-          />
+      {/* Split Workbench Grid */}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1.25fr", gap: "1.5rem", alignItems: "start" }}>
+        {/* Left Column: Source Transcript Viewer */}
+        <div style={{ position: "sticky", top: "80px" }}>
+          {batch && (
+            <SourceSnippetViewer
+              rawText={batch.raw_text}
+              sourceType={batch.source_type}
+              activeSnippet={hoveredSnippet}
+            />
+          )}
         </div>
 
-        {/* Right Column: Stack of Action Items */}
+        {/* Right Column: Action Item Candidate Cards */}
         <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", paddingBottom: "0.5rem" }}>
+            <span style={{ fontSize: "0.85rem", fontWeight: 600, color: "#ffffff" }}>
+              Extracted Action Items ({batch?.items.length || 0})
+            </span>
+            <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>
+              {approvedCount} selected for execution
+            </span>
+          </div>
+
           {batch?.items.map((item) => (
             <ActionCard
               key={item.id}
@@ -245,16 +248,62 @@ export default function ReviewPage({
               decision={decisions[item.id]}
               onDecisionChange={handleDecisionChange}
               onHoverSnippet={setHoveredSnippet}
-              isHighlighted={hoveredSnippet === item.source_snippet}
+              isHighlighted={
+                Boolean(
+                  hoveredSnippet &&
+                    item.source_snippet &&
+                    (hoveredSnippet === item.source_snippet ||
+                      hoveredSnippet.includes(item.source_snippet) ||
+                      item.source_snippet.includes(hoveredSnippet))
+                )
+              }
             />
           ))}
-
-          {batch?.items.length === 0 && (
-            <div className="glass-panel" style={{ padding: "3rem", textAlign: "center", color: "var(--text-muted)" }}>
-              No action items detected in this input text.
-            </div>
-          )}
         </div>
+      </div>
+
+      {/* Sticky Bottom Execution Bar */}
+      <div
+        style={{
+          position: "fixed",
+          bottom: "1.5rem",
+          left: "50%",
+          transform: "translateX(-50%)",
+          zIndex: 40,
+          width: "calc(100% - 3rem)",
+          maxWidth: "800px",
+          background: "rgba(17, 17, 17, 0.9)",
+          border: "1px solid var(--border-medium)",
+          borderRadius: "12px",
+          padding: "0.75rem 1.25rem",
+          backdropFilter: "blur(20px)",
+          WebkitBackdropFilter: "blur(20px)",
+          boxShadow: "0 10px 30px rgba(0, 0, 0, 0.8)",
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+        }}
+      >
+        <div style={{ display: "flex", gap: "1.25rem", fontSize: "0.85rem" }}>
+          <span>
+            Approved: <strong style={{ color: "#34d399" }}>{approvedCount}</strong>
+          </span>
+          <span>
+            Dismissed: <strong style={{ color: "#fb7185" }}>{rejectedCount}</strong>
+          </span>
+        </div>
+
+        <button
+          type="button"
+          onClick={handleSubmitApprovals}
+          disabled={submitting || approvedCount === 0}
+          className="btn btn-primary"
+          style={{ padding: "0.55rem 1.25rem", fontSize: "0.875rem" }}
+        >
+          {submitting
+            ? "Executing side-effects..."
+            : `Execute ${approvedCount} Approved ${approvedCount === 1 ? "Action" : "Actions"} →`}
+        </button>
       </div>
     </div>
   );

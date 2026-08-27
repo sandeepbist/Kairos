@@ -7,7 +7,7 @@ import { SourceType } from "@/lib/types";
 
 const SAMPLE_PRESETS = {
   meeting: {
-    label: "🎙️ Engineering Sync Meeting",
+    label: "Engineering Sync",
     type: "meeting_transcript" as SourceType,
     text: `Sarah: Alex, please file a high priority ticket for the checkout crash bug by tomorrow morning.
 Alex: Sure Sarah, I will schedule a review meeting with the frontend team on Thursday at 2 PM to go over the fix.
@@ -15,14 +15,14 @@ John: I will update the technical spec doc in the roadmap wiki and share it with
 Sarah: Let's also make sure someone follows up on the billing invoices discrepancy.`,
   },
   incident: {
-    label: "🚨 Incident Post-Mortem",
+    label: "Incident Post-Mortem",
     type: "slack_conversation" as SourceType,
     text: `IncidentLead: Mark, please file an urgent Jira bug on the auth token expiration race condition.
 DevOps: I will schedule a post-mortem sync call with the on-call team tomorrow at 10 AM.
 Security: Please document the root cause analysis in Notion under the Incident Database.`,
   },
   email: {
-    label: "✉️ Project Scope Email",
+    label: "Scope Email",
     type: "email_thread" as SourceType,
     text: `From: product-lead@company.com
 Subject: Q3 Architecture Deliverables
@@ -52,7 +52,7 @@ export default function IngestPage() {
 
   const handleIngest = async () => {
     if (!rawText.trim() || rawText.length < 10) {
-      setError("Please enter at least 10 characters of unstructured text.");
+      setError("Please enter at least 10 characters of conversation text.");
       return;
     }
 
@@ -61,58 +61,49 @@ export default function IngestPage() {
 
     try {
       const response = await ingestBatch(rawText, sourceType);
-      // Navigate to review screen
       router.push(`/review/${response.batch_id}`);
     } catch (err: any) {
-      setError(err.message || "Failed to submit batch. Make sure backend is running on localhost:8000.");
+      setError(err.message || "Failed to submit batch. Verify backend is running on localhost:8000.");
       setLoading(false);
     }
   };
 
   return (
-    <div className="container" style={{ maxWidth: "960px" }}>
-      {/* Header Banner */}
-      <div style={{ textAlign: "center", marginBottom: "2.5rem" }}>
-        <h1 style={{
-          fontSize: "2.5rem",
-          fontWeight: 800,
-          letterSpacing: "-0.03em",
-          background: "linear-gradient(135deg, #f8fafc 40%, #94a3b8)",
-          WebkitBackgroundClip: "text",
-          WebkitTextFillColor: "transparent",
-          marginBottom: "0.75rem",
-        }}>
-          Ambient Action Extraction & Execution
+    <div className="container" style={{ maxWidth: "880px", paddingTop: "4rem", paddingBottom: "6rem" }}>
+      {/* Hero Header */}
+      <div style={{ marginBottom: "3rem" }}>
+        <div className="pill" style={{ marginBottom: "1rem" }}>
+          <span className="dot dot-green" />
+          <span>Ambient Action Agent</span>
+        </div>
+        <h1 className="heading-display" style={{ marginBottom: "1rem" }}>
+          Turn conversations into executed actions.
         </h1>
-        <p style={{
-          fontSize: "1.05rem",
-          color: "var(--text-secondary)",
-          maxWidth: "680px",
-          margin: "0 auto",
-        }}>
-          Paste meeting transcripts, raw emails, or Slack conversations.
-          Kairos reasons over the text, routes each item to Notion, Jira, Calendar, or Task Ledger, and awaits your 1-click approval.
+        <p className="text-subhead" style={{ maxWidth: "620px" }}>
+          Paste meeting transcripts, emails, or incident logs. Kairos reasons over the text, matches target MCP tools, and routes side-effects for 1-click human verification.
         </p>
       </div>
 
-      {/* Preset Quick Loader Buttons */}
-      <div style={{
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "space-between",
-        marginBottom: "1rem",
-        flexWrap: "wrap",
-        gap: "0.75rem",
-      }}>
-        <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
-          <span style={{ fontSize: "0.8rem", color: "var(--text-muted)", alignSelf: "center", marginRight: "0.25rem" }}>
-            Sample Presets:
+      {/* Preset Selector & Format Bar */}
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          marginBottom: "1rem",
+          flexWrap: "wrap",
+          gap: "0.75rem",
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: "0.4rem", flexWrap: "wrap" }}>
+          <span style={{ fontSize: "0.8rem", color: "var(--text-muted)", marginRight: "0.25rem" }}>
+            Templates:
           </span>
           <button
             type="button"
             className="btn btn-secondary"
             onClick={() => handleLoadPreset("meeting")}
-            style={{ fontSize: "0.8rem", padding: "0.35rem 0.75rem" }}
+            style={{ fontSize: "0.75rem", padding: "0.3rem 0.65rem", borderRadius: "6px" }}
           >
             {SAMPLE_PRESETS.meeting.label}
           </button>
@@ -120,7 +111,7 @@ export default function IngestPage() {
             type="button"
             className="btn btn-secondary"
             onClick={() => handleLoadPreset("incident")}
-            style={{ fontSize: "0.8rem", padding: "0.35rem 0.75rem" }}
+            style={{ fontSize: "0.75rem", padding: "0.3rem 0.65rem", borderRadius: "6px" }}
           >
             {SAMPLE_PRESETS.incident.label}
           </button>
@@ -128,28 +119,27 @@ export default function IngestPage() {
             type="button"
             className="btn btn-secondary"
             onClick={() => handleLoadPreset("email")}
-            style={{ fontSize: "0.8rem", padding: "0.35rem 0.75rem" }}
+            style={{ fontSize: "0.75rem", padding: "0.3rem 0.65rem", borderRadius: "6px" }}
           >
             {SAMPLE_PRESETS.email.label}
           </button>
         </div>
 
-        {/* Source Type Selector */}
+        {/* Source Format Selector */}
         <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-          <label style={{ fontSize: "0.8rem", color: "var(--text-secondary)", fontWeight: 600 }}>
-            Source Format:
-          </label>
+          <label style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>Format:</label>
           <select
             value={sourceType}
             onChange={(e) => setSourceType(e.target.value as SourceType)}
             style={{
-              padding: "0.4rem 0.75rem",
+              padding: "0.3rem 0.6rem",
               borderRadius: "6px",
-              background: "rgba(18, 26, 43, 0.9)",
+              background: "var(--bg-surface)",
               border: "1px solid var(--border-subtle)",
               color: "var(--text-primary)",
-              fontSize: "0.85rem",
+              fontSize: "0.8rem",
               cursor: "pointer",
+              outline: "none",
             }}
           >
             <option value="meeting_transcript">Meeting Transcript</option>
@@ -160,83 +150,68 @@ export default function IngestPage() {
         </div>
       </div>
 
-      {/* Ingestion Panel */}
-      <div className="glass-panel" style={{ padding: "1.5rem", position: "relative" }}>
+      {/* Editor Panel */}
+      <div className="card-panel" style={{ padding: "1.25rem", marginBottom: "1.5rem" }}>
         <textarea
           value={rawText}
           onChange={(e) => setRawText(e.target.value)}
-          placeholder="Paste raw conversation or transcript here..."
-          rows={12}
+          placeholder="Paste raw conversation, transcript, or unstructured notes here..."
+          rows={11}
           style={{
             width: "100%",
-            background: "rgba(0, 0, 0, 0.4)",
-            border: "1px solid var(--border-subtle)",
-            borderRadius: "8px",
-            padding: "1rem",
+            background: "transparent",
+            border: "none",
+            outline: "none",
             color: "var(--text-primary)",
-            fontSize: "0.95rem",
+            fontSize: "0.9rem",
             lineHeight: 1.6,
             fontFamily: "var(--font-mono)",
             resize: "vertical",
-            outline: "none",
           }}
         />
 
-        {/* Character & Token Counts */}
-        <div style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          marginTop: "0.75rem",
-          fontSize: "0.8rem",
-          color: "var(--text-muted)",
-        }}>
-          <div>
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            paddingTop: "1rem",
+            borderTop: "1px solid var(--border-subtle)",
+            marginTop: "0.75rem",
+          }}
+        >
+          <div style={{ display: "flex", gap: "1rem", fontSize: "0.8rem", color: "var(--text-muted)" }}>
             <span>{wordCount} words</span>
-            <span style={{ margin: "0 0.5rem" }}>•</span>
-            <span style={{ color: approxTokens > 3000 ? "var(--accent-rose)" : "var(--text-muted)" }}>
-              ~{approxTokens} tokens {approxTokens > 3000 && "(Will be safely guarded)"}
-            </span>
+            <span>~{approxTokens} tokens</span>
+            <span>Max: 3,000</span>
           </div>
 
           <button
+            type="button"
             onClick={handleIngest}
             disabled={loading}
             className="btn btn-primary"
-            style={{
-              padding: "0.7rem 1.75rem",
-              fontSize: "0.95rem",
-              opacity: loading ? 0.7 : 1,
-              cursor: loading ? "not-allowed" : "pointer",
-            }}
+            style={{ padding: "0.55rem 1.25rem", fontSize: "0.875rem" }}
           >
-            {loading ? (
-              <>
-                <span className="pulse-indicator">⚡</span> Extracting with LangGraph...
-              </>
-            ) : (
-              <>
-                🚀 Extract & Route Action Items
-              </>
-            )}
+            {loading ? "Extracting..." : "Extract & Route Actions →"}
           </button>
         </div>
+      </div>
 
-        {/* Error Alert */}
-        {error && (
-          <div style={{
-            marginTop: "1rem",
+      {error && (
+        <div
+          style={{
             padding: "0.75rem 1rem",
-            borderRadius: "6px",
-            background: "rgba(244, 63, 94, 0.15)",
-            border: "1px solid rgba(244, 63, 94, 0.3)",
+            borderRadius: "8px",
+            background: "rgba(244, 63, 94, 0.1)",
+            border: "1px solid rgba(244, 63, 94, 0.25)",
             color: "#fb7185",
             fontSize: "0.875rem",
-          }}>
-            ⚠️ {error}
-          </div>
-        )}
-      </div>
+          }}
+        >
+          {error}
+        </div>
+      )}
     </div>
   );
 }

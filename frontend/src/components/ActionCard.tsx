@@ -66,52 +66,50 @@ export function ActionCard({
     });
   };
 
-  const getConfidenceBadge = (score: number) => {
-    const pct = Math.round(score * 100);
-    if (score >= 0.85) return <span className="badge badge-confidence-high">🟢 {pct}% Confidence</span>;
-    if (score >= 0.70) return <span className="badge badge-confidence-medium">🟡 {pct}% Confidence</span>;
-    return <span className="badge badge-confidence-low">🔴 {pct}% Confidence</span>;
+  const getToolPillClass = (tool: string) => {
+    if (tool === "notion") return "pill pill-notion";
+    if (tool === "jira") return "pill pill-jira";
+    if (tool === "calendar") return "pill pill-calendar";
+    return "pill pill-task_ledger";
   };
 
   return (
     <div
-      className="glass-panel"
+      className="card-panel"
       onMouseEnter={() => onHoverSnippet(item.source_snippet)}
       onMouseLeave={() => onHoverSnippet(null)}
       style={{
         padding: "1.25rem",
         border: isHighlighted
-          ? "1px solid var(--accent-cyan)"
+          ? "1px solid #06b6d4"
           : currentAction === "REJECT"
-          ? "1px solid rgba(244, 63, 94, 0.4)"
+          ? "1px solid rgba(244, 63, 94, 0.3)"
           : "1px solid var(--border-subtle)",
         background: currentAction === "REJECT"
-          ? "rgba(244, 63, 94, 0.04)"
+          ? "rgba(244, 63, 94, 0.03)"
           : isHighlighted
-          ? "var(--bg-card-hover)"
-          : "var(--bg-card)",
-        transition: "all 0.2s ease",
+          ? "var(--bg-surface-hover)"
+          : "var(--bg-surface)",
+        transition: "all 0.15s ease",
         display: "flex",
         flexDirection: "column",
         gap: "0.85rem",
       }}
     >
-      {/* Top Header Row */}
+      {/* Top Header */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "0.5rem" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: "0.6rem" }}>
-          {/* Target Tool Selector */}
+        <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+          {/* Tool Selector */}
           <select
             value={selectedTool}
             onChange={(e) => handleToolChange(e.target.value as TargetTool)}
+            className={getToolPillClass(selectedTool)}
             style={{
-              padding: "0.25rem 0.6rem",
-              borderRadius: "6px",
-              fontSize: "0.8rem",
-              fontWeight: 700,
-              background: "rgba(0, 0, 0, 0.4)",
-              color: selectedTool === "jira" ? "#60a5fa" : selectedTool === "calendar" ? "#34d399" : selectedTool === "notion" ? "#c084fc" : "#fbbf24",
-              border: "1px solid var(--border-subtle)",
+              padding: "0.2rem 0.5rem",
+              fontSize: "0.75rem",
+              fontWeight: 600,
               cursor: "pointer",
+              outline: "none",
             }}
           >
             <option value="jira">Jira Issue</option>
@@ -120,104 +118,74 @@ export function ActionCard({
             <option value="task_ledger">Task Ledger</option>
           </select>
 
-          {/* Actionability Badge */}
-          <span style={{
-            fontSize: "0.7rem",
-            color: "var(--text-muted)",
-            textTransform: "uppercase",
-            fontWeight: 600,
-            background: "rgba(255, 255, 255, 0.05)",
-            padding: "0.2rem 0.5rem",
-            borderRadius: "4px",
-          }}>
-            {item.actionability_type}
+          <span style={{ fontSize: "0.75rem", color: "var(--text-muted)", textTransform: "capitalize" }}>
+            {item.actionability_type.replace("_", " ")}
           </span>
         </div>
 
-        {/* Confidence Badge */}
-        {getConfidenceBadge(item.confidence)}
+        {/* Confidence Pill */}
+        <div className="pill" style={{ fontSize: "0.7rem", color: item.confidence >= 0.85 ? "#34d399" : item.confidence >= 0.7 ? "#fbbf24" : "#fb7185" }}>
+          <span className={`dot ${item.confidence >= 0.85 ? "dot-green" : item.confidence >= 0.7 ? "dot-amber" : "dot-rose"}`} />
+          <span>{Math.round(item.confidence * 100)}% Confidence</span>
+        </div>
       </div>
 
-      {/* Description */}
-      <p style={{ fontSize: "0.95rem", fontWeight: 500, color: "var(--text-primary)", lineHeight: 1.4 }}>
+      {/* Task Description */}
+      <p style={{ fontSize: "0.925rem", fontWeight: 500, color: "#ffffff", lineHeight: 1.45 }}>
         {item.description}
       </p>
 
-      {/* Metadata Chips: Speaker, Assignee, Priority */}
-      <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", alignItems: "center", fontSize: "0.75rem" }}>
+      {/* Metadata Tags */}
+      <div style={{ display: "flex", gap: "0.4rem", flexWrap: "wrap", alignItems: "center", fontSize: "0.75rem" }}>
         {item.speaker && (
-          <span style={{ color: "var(--text-secondary)", background: "rgba(255, 255, 255, 0.04)", padding: "0.15rem 0.5rem", borderRadius: "4px" }}>
-            🗣️ Speaker: <strong style={{ color: "var(--text-primary)" }}>{item.speaker}</strong>
+          <span className="pill" style={{ fontSize: "0.7rem" }}>
+            Speaker: <strong style={{ color: "#ffffff", marginLeft: "0.2rem" }}>{item.speaker}</strong>
           </span>
         )}
         {item.suggested_assignee && (
-          <span style={{ color: "var(--text-secondary)", background: "rgba(56, 189, 248, 0.08)", padding: "0.15rem 0.5rem", borderRadius: "4px" }}>
-            👤 Assignee: <strong style={{ color: "var(--accent-cyan)" }}>{item.suggested_assignee}</strong>
+          <span className="pill" style={{ fontSize: "0.7rem" }}>
+            Assignee: <strong style={{ color: "#ffffff", marginLeft: "0.2rem" }}>{item.suggested_assignee}</strong>
           </span>
         )}
-        <span style={{
-          color: item.priority === "high" ? "#fb7185" : "var(--text-muted)",
-          background: "rgba(255, 255, 255, 0.04)",
-          padding: "0.15rem 0.5rem",
-          borderRadius: "4px",
-          textTransform: "capitalize",
-        }}>
-          Priority: <strong>{item.priority}</strong>
+        <span className="pill" style={{ fontSize: "0.7rem", textTransform: "capitalize" }}>
+          Priority: {item.priority}
         </span>
       </div>
 
-      {/* Source Provenance Snippet Preview */}
-      <div style={{
-        background: "rgba(0, 0, 0, 0.35)",
-        borderLeft: "2px solid var(--accent-cyan)",
-        padding: "0.5rem 0.75rem",
-        borderRadius: "0 6px 6px 0",
-        fontSize: "0.8rem",
-        color: "var(--text-secondary)",
-        fontFamily: "var(--font-mono)",
-      }}>
-        <span style={{ fontSize: "0.7rem", color: "var(--text-muted)", display: "block", marginBottom: "0.2rem" }}>
-          SOURCE QUOTE:
-        </span>
-        &quot;{item.source_snippet}&quot;
-      </div>
-
-      {/* Card Action Controls */}
-      <div style={{
-        display: "flex",
-        justifyContent: "space-between",
-        alignItems: "center",
-        marginTop: "0.25rem",
-        paddingTop: "0.75rem",
-        borderTop: "1px solid var(--border-subtle)",
-      }}>
+      {/* Action Decision Controls */}
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          paddingTop: "0.75rem",
+          borderTop: "1px solid var(--border-subtle)",
+          marginTop: "0.25rem",
+        }}
+      >
         <button
+          type="button"
+          className="btn btn-ghost"
           onClick={() => setIsModalOpen(true)}
-          style={{
-            background: "transparent",
-            border: "1px solid var(--border-subtle)",
-            color: "var(--text-secondary)",
-            fontSize: "0.75rem",
-            padding: "0.3rem 0.6rem",
-            borderRadius: "6px",
-            cursor: "pointer",
-          }}
+          style={{ fontSize: "0.75rem", padding: "0.25rem 0.5rem" }}
         >
-          ⚙️ Customize Payload
+          Customize Payload →
         </button>
 
-        <div style={{ display: "flex", gap: "0.5rem" }}>
+        <div style={{ display: "flex", gap: "0.4rem" }}>
           <button
+            type="button"
             onClick={handleReject}
             className={`btn ${currentAction === "REJECT" ? "btn-danger" : "btn-secondary"}`}
-            style={{ padding: "0.35rem 0.8rem", fontSize: "0.75rem" }}
+            style={{ fontSize: "0.75rem", padding: "0.3rem 0.75rem" }}
           >
-            {currentAction === "REJECT" ? "✗ Rejected" : "Reject"}
+            {currentAction === "REJECT" ? "Dismissed" : "Dismiss"}
           </button>
           <button
+            type="button"
             onClick={handleApprove}
             className={`btn ${currentAction !== "REJECT" ? "btn-success" : "btn-secondary"}`}
-            style={{ padding: "0.35rem 0.8rem", fontSize: "0.75rem" }}
+            style={{ fontSize: "0.75rem", padding: "0.3rem 0.75rem" }}
           >
             {currentAction !== "REJECT" ? "✓ Approved" : "Approve"}
           </button>
@@ -226,10 +194,10 @@ export function ActionCard({
 
       {/* Payload Modal */}
       <PayloadModal
-        item={item}
-        targetTool={selectedTool}
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
+        item={item}
+        targetTool={selectedTool}
         onSave={handleSavePayload}
       />
     </div>
