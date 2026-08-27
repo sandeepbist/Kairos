@@ -32,6 +32,14 @@ Hi Team,
 2. Sarah: Can you schedule a roadmap planning session with the stakeholders next Monday?
 3. Task: Clean up all outdated deployment scripts before the freeze.`,
   },
+  legal: {
+    label: "Legal / MSA Agreement",
+    type: "general_notes" as SourceType,
+    text: `Master Services Agreement Excerpt:
+1. LegalCounsel: Alex, please file a Jira compliance audit ticket for the SOC2 Type II controls.
+2. VendorManager: Sarah, please schedule a quarterly SLA compliance review call with the vendor for next Friday at 3 PM.
+3. Operations: Please document the intellectual property assignment schedule in Notion under Corporate Legal Wiki.`,
+  },
 };
 
 export default function IngestPage() {
@@ -122,6 +130,14 @@ export default function IngestPage() {
             style={{ fontSize: "0.75rem", padding: "0.3rem 0.65rem", borderRadius: "6px" }}
           >
             {SAMPLE_PRESETS.email.label}
+          </button>
+          <button
+            type="button"
+            className="btn btn-secondary"
+            onClick={() => handleLoadPreset("legal")}
+            style={{ fontSize: "0.75rem", padding: "0.3rem 0.65rem", borderRadius: "6px" }}
+          >
+            {SAMPLE_PRESETS.legal.label}
           </button>
         </div>
 
