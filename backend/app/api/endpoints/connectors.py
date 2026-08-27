@@ -45,9 +45,21 @@ async def get_connectors_status(
             "type": "custom_internal" if tool_name == "task_ledger" else "official_mcp",
         }
 
+    llm_info = {
+        "gemini": {
+            "connected": bool("gemini" in connected_providers or "google_ai" in connected_providers or settings.GOOGLE_API_KEY),
+            "model": settings.DEFAULT_MODEL_NAME,
+        },
+        "openai": {
+            "connected": bool("openai" in connected_providers or settings.OPENAI_API_KEY),
+            "model": "gpt-4o-mini",
+        },
+    }
+
     return {
         "sandbox_mode": settings.SANDBOX_MODE,
         "connectors": connectors_info,
+        "llm_providers": llm_info,
     }
 
 
@@ -56,12 +68,13 @@ async def save_oauth_token(
     request: SaveOAuthTokenRequest,
     db: AsyncSession = Depends(get_db),
 ):
-    """Encrypts and stores user OAuth credentials in Postgres vault."""
+    """Encrypts and stores user OAuth or LLM API credentials in Postgres vault."""
     provider = request.provider.lower().strip()
-    if provider not in ["notion", "jira", "google_calendar"]:
+    valid_providers = ["notion", "jira", "google_calendar", "gemini", "google_ai", "openai"]
+    if provider not in valid_providers:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Unsupported OAuth provider '{provider}'.",
+            detail=f"Unsupported provider '{provider}'. Valid options: {valid_providers}",
         )
 
     enc_access = encrypt_token(request.access_token)

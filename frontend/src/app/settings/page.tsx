@@ -6,11 +6,13 @@ import { ConnectorsStatusResponse } from "@/lib/types";
 
 export default function SettingsPage() {
   const [status, setStatus] = useState<ConnectorsStatusResponse | null>(null);
-  const [sandboxEnabled, setSandboxEnabled] = useState(true);
+  const [sandboxEnabled, setSandboxEnabled] = useState(false);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<{ text: string; type: "success" | "error" | "info" } | null>(null);
 
-  // Live Token State
+  // Live Token States
+  const [geminiToken, setGeminiToken] = useState("");
+  const [openaiToken, setOpenaiToken] = useState("");
   const [jiraToken, setJiraToken] = useState("");
   const [notionToken, setNotionToken] = useState("");
   const [calendarToken, setCalendarToken] = useState("");
@@ -37,7 +39,7 @@ export default function SettingsPage() {
       const res = await toggleSandbox(next);
       setSandboxEnabled(res.sandbox_mode);
       setMessage({
-        text: `Sandbox Mode is now ${res.sandbox_mode ? "ENABLED (Offline Mock Emulation)" : "DISABLED (Live Production APIs & MCP Servers)"}`,
+        text: `Execution Mode set to ${res.sandbox_mode ? "SANDBOX (Offline Emulation)" : "LIVE (Real HTTP APIs & MCP Connectors)"}`,
         type: "info",
       });
       loadStatus();
@@ -61,6 +63,8 @@ export default function SettingsPage() {
         text: `Successfully encrypted and saved ${provider.toUpperCase()} credentials into PostgreSQL Vault!`,
         type: "success",
       });
+      if (provider === "gemini") setGeminiToken("");
+      if (provider === "openai") setOpenaiToken("");
       if (provider === "jira") setJiraToken("");
       if (provider === "notion") setNotionToken("");
       if (provider === "google_calendar") setCalendarToken("");
@@ -89,18 +93,20 @@ export default function SettingsPage() {
     }
   };
 
+  const isGeminiConnected = Boolean(status?.llm_providers?.gemini?.connected);
+  const isOpenAIConnected = Boolean(status?.llm_providers?.openai?.connected);
   const isNotionConnected = Boolean(status?.connectors?.notion?.oauth_connected);
   const isJiraConnected = Boolean(status?.connectors?.jira?.oauth_connected);
   const isCalendarConnected = Boolean(status?.connectors?.calendar?.oauth_connected);
 
   return (
-    <div className="container" style={{ maxWidth: "980px" }}>
+    <div className="container" style={{ maxWidth: "980px", paddingBottom: "6rem" }}>
       <div style={{ marginBottom: "2rem" }}>
         <h1 style={{ fontSize: "2rem", fontWeight: 800, letterSpacing: "-0.02em" }}>
-          Connectors, OAuth Vault & Live Mode Settings
+          Connectors, AI Models & Live Vault Settings
         </h1>
         <p style={{ color: "var(--text-secondary)", fontSize: "0.95rem", marginTop: "0.25rem" }}>
-          Configure live Model Context Protocol (MCP) servers, encrypted OAuth 2.1 credentials, and demo sandboxing.
+          Configure live LLM extraction models, encrypted OAuth 2.1 credentials, and target tool APIs.
         </p>
       </div>
 
@@ -118,7 +124,7 @@ export default function SettingsPage() {
         </div>
       )}
 
-      {/* Sandbox Mode Toggle Card */}
+      {/* Execution Mode Toggle Card */}
       <div className="glass-panel" style={{ padding: "1.5rem", marginBottom: "2rem" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "1rem" }}>
           <div>
@@ -130,15 +136,15 @@ export default function SettingsPage() {
             </div>
             <p style={{ color: "var(--text-secondary)", fontSize: "0.85rem", marginTop: "0.35rem", maxWidth: "600px" }}>
               {sandboxEnabled
-                ? "Sandbox Mode allows offline demos without requiring live Notion, Jira, or Google Calendar API keys. All responses simulate real schemas and latency."
-                : "Live Mode executes real HTTP REST calls and MCP requests to Atlassian Jira, Notion API v1, and Google Calendar API v3 using credentials from the OAuth Vault below."}
+                ? "Sandbox Mode simulates tool responses with realistic schemas without making live network calls."
+                : "Live Mode executes real HTTP REST calls and MCP requests to Atlassian Jira, Notion API v1, and Google Calendar API v3 using credentials from the vault below."}
             </p>
           </div>
 
           <button
             onClick={handleToggleSandbox}
             disabled={saving}
-            className={`btn ${sandboxEnabled ? "btn-secondary" : "btn-primary"}`}
+            className={`btn ${sandboxEnabled ? "btn-primary" : "btn-secondary"}`}
             style={{ padding: "0.6rem 1.25rem", fontSize: "0.875rem" }}
           >
             {saving ? "Updating..." : sandboxEnabled ? "Switch to Live Production Mode" : "Switch to Sandbox Mode"}
@@ -146,33 +152,26 @@ export default function SettingsPage() {
         </div>
       </div>
 
-      {/* Live OAuth Credentials Vault */}
-      <h3 style={{ fontSize: "1.2rem", fontWeight: 700, marginBottom: "1rem" }}>
-        🔐 Encrypted OAuth Vault & Production Credentials
+      {/* AI Extraction Model Vault */}
+      <h3 style={{ fontSize: "1.2rem", fontWeight: 700, marginBottom: "0.5rem" }}>
+        🤖 AI Reasoning & Structured Extraction Model
       </h3>
       <p style={{ fontSize: "0.85rem", color: "var(--text-secondary)", marginBottom: "1.25rem" }}>
-        Tokens entered here are encrypted via AES-256 Fernet before storage in PostgreSQL and used for live API calls when Sandbox Mode is disabled.
+        Kairos uses multi-turn structured LLM output to reason over transcripts, resolve dates, and format tool schemas.
       </p>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: "1.25rem", marginBottom: "2.5rem" }}>
-        {/* Notion Token Form */}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1.25rem", marginBottom: "2.5rem" }}>
+        {/* Google Gemini */}
         <div className="glass-panel" style={{ padding: "1.25rem" }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.5rem" }}>
-            <span style={{ fontWeight: 700, color: "#c084fc", fontSize: "0.95rem" }}>Notion Integration Token (secret_...)</span>
-            {isNotionConnected ? (
+            <span style={{ fontWeight: 700, color: "#38bdf8", fontSize: "0.95rem" }}>Google Gemini API Key</span>
+            {isGeminiConnected ? (
               <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-                <span className="badge badge-confidence-high">✓ Connected in Vault</span>
+                <span className="badge badge-confidence-high">🟢 Live (gemini-2.0-flash)</span>
                 <button
-                  onClick={() => handleDeleteToken("notion")}
-                  disabled={savingProvider === "notion"}
-                  style={{
-                    background: "none",
-                    border: "none",
-                    color: "var(--text-muted)",
-                    fontSize: "0.75rem",
-                    cursor: "pointer",
-                    textDecoration: "underline",
-                  }}
+                  onClick={() => handleDeleteToken("gemini")}
+                  disabled={savingProvider === "gemini"}
+                  style={{ background: "none", border: "none", color: "var(--text-muted)", fontSize: "0.75rem", cursor: "pointer", textDecoration: "underline" }}
                 >
                   Disconnect
                 </button>
@@ -184,7 +183,119 @@ export default function SettingsPage() {
             )}
           </div>
           <p style={{ fontSize: "0.8rem", color: "var(--text-muted)", marginBottom: "0.75rem" }}>
-            Create an internal integration at <a href="https://www.notion.so/my-integrations" target="_blank" rel="noreferrer" style={{ color: "#c084fc", textDecoration: "underline" }}>notion.so/my-integrations</a> and paste the internal secret.
+            Obtain a free API key at <a href="https://aistudio.google.com" target="_blank" rel="noreferrer" style={{ color: "#38bdf8", textDecoration: "underline" }}>aistudio.google.com</a>.
+          </p>
+          <div style={{ display: "flex", gap: "0.5rem" }}>
+            <input
+              type="password"
+              placeholder="Enter Google Gemini API Key"
+              value={geminiToken}
+              onChange={(e) => setGeminiToken(e.target.value)}
+              style={{
+                flex: 1,
+                padding: "0.5rem 0.75rem",
+                borderRadius: "6px",
+                background: "rgba(0, 0, 0, 0.4)",
+                border: "1px solid var(--border-subtle)",
+                color: "var(--text-primary)",
+                fontSize: "0.85rem",
+              }}
+            />
+            <button
+              onClick={() => handleSaveToken("gemini", geminiToken)}
+              disabled={savingProvider === "gemini"}
+              className="btn btn-secondary"
+              style={{ fontSize: "0.85rem", padding: "0.5rem 1rem" }}
+            >
+              {savingProvider === "gemini" ? "Saving..." : isGeminiConnected ? "Update Key" : "Save Gemini Key"}
+            </button>
+          </div>
+        </div>
+
+        {/* OpenAI */}
+        <div className="glass-panel" style={{ padding: "1.25rem" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.5rem" }}>
+            <span style={{ fontWeight: 700, color: "#10b981", fontSize: "0.95rem" }}>OpenAI API Key</span>
+            {isOpenAIConnected ? (
+              <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                <span className="badge badge-confidence-high">🟢 Live (gpt-4o-mini)</span>
+                <button
+                  onClick={() => handleDeleteToken("openai")}
+                  disabled={savingProvider === "openai"}
+                  style={{ background: "none", border: "none", color: "var(--text-muted)", fontSize: "0.75rem", cursor: "pointer", textDecoration: "underline" }}
+                >
+                  Disconnect
+                </button>
+              </div>
+            ) : (
+              <span className="badge" style={{ background: "rgba(255, 255, 255, 0.05)", color: "var(--text-muted)" }}>
+                Not Configured
+              </span>
+            )}
+          </div>
+          <p style={{ fontSize: "0.8rem", color: "var(--text-muted)", marginBottom: "0.75rem" }}>
+            Obtain an API key at <a href="https://platform.openai.com/api-keys" target="_blank" rel="noreferrer" style={{ color: "#10b981", textDecoration: "underline" }}>platform.openai.com</a>.
+          </p>
+          <div style={{ display: "flex", gap: "0.5rem" }}>
+            <input
+              type="password"
+              placeholder="Enter OpenAI API Key (sk-...)"
+              value={openaiToken}
+              onChange={(e) => setOpenaiToken(e.target.value)}
+              style={{
+                flex: 1,
+                padding: "0.5rem 0.75rem",
+                borderRadius: "6px",
+                background: "rgba(0, 0, 0, 0.4)",
+                border: "1px solid var(--border-subtle)",
+                color: "var(--text-primary)",
+                fontSize: "0.85rem",
+              }}
+            />
+            <button
+              onClick={() => handleSaveToken("openai", openaiToken)}
+              disabled={savingProvider === "openai"}
+              className="btn btn-secondary"
+              style={{ fontSize: "0.85rem", padding: "0.5rem 1rem" }}
+            >
+              {savingProvider === "openai" ? "Saving..." : isOpenAIConnected ? "Update Key" : "Save OpenAI Key"}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Target MCP Tool Credentials Vault */}
+      <h3 style={{ fontSize: "1.2rem", fontWeight: 700, marginBottom: "0.5rem" }}>
+        🔐 Target Tool OAuth Vault & Production Credentials
+      </h3>
+      <p style={{ fontSize: "0.85rem", color: "var(--text-secondary)", marginBottom: "1.25rem" }}>
+        Credentials are encrypted with AES-256 Fernet keys in PostgreSQL and decrypted in-memory during approved execution.
+      </p>
+
+      <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: "1.25rem", marginBottom: "2.5rem" }}>
+        {/* Notion Token Form */}
+        <div className="glass-panel" style={{ padding: "1.25rem" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.5rem" }}>
+            <span style={{ fontWeight: 700, color: "#c084fc", fontSize: "0.95rem" }}>Notion Integration Secret (secret_...)</span>
+            {isNotionConnected ? (
+              <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                <span className="badge badge-confidence-high">✓ Connected in Vault</span>
+                <button
+                  onClick={() => handleDeleteToken("notion")}
+                  disabled={savingProvider === "notion"}
+                  style={{ background: "none", border: "none", color: "var(--text-muted)", fontSize: "0.75rem", cursor: "pointer", textDecoration: "underline" }}
+                >
+                  Disconnect
+                </button>
+              </div>
+            ) : (
+              <span className="badge" style={{ background: "rgba(255, 255, 255, 0.05)", color: "var(--text-muted)" }}>
+                Not Configured
+              </span>
+            )}
+          </div>
+          <p style={{ fontSize: "0.8rem", color: "var(--text-muted)", marginBottom: "0.75rem" }}>
+            Create an internal integration at <a href="https://www.notion.so/my-integrations" target="_blank" rel="noreferrer" style={{ color: "#c084fc", textDecoration: "underline" }}>notion.so/my-integrations</a>. Ensure you grant your integration access to your Notion page/database.
           </p>
           <div style={{ display: "flex", gap: "0.5rem" }}>
             <input
@@ -223,14 +334,7 @@ export default function SettingsPage() {
                 <button
                   onClick={() => handleDeleteToken("jira")}
                   disabled={savingProvider === "jira"}
-                  style={{
-                    background: "none",
-                    border: "none",
-                    color: "var(--text-muted)",
-                    fontSize: "0.75rem",
-                    cursor: "pointer",
-                    textDecoration: "underline",
-                  }}
+                  style={{ background: "none", border: "none", color: "var(--text-muted)", fontSize: "0.75rem", cursor: "pointer", textDecoration: "underline" }}
                 >
                   Disconnect
                 </button>
@@ -281,14 +385,7 @@ export default function SettingsPage() {
                 <button
                   onClick={() => handleDeleteToken("google_calendar")}
                   disabled={savingProvider === "google_calendar"}
-                  style={{
-                    background: "none",
-                    border: "none",
-                    color: "var(--text-muted)",
-                    fontSize: "0.75rem",
-                    cursor: "pointer",
-                    textDecoration: "underline",
-                  }}
+                  style={{ background: "none", border: "none", color: "var(--text-muted)", fontSize: "0.75rem", cursor: "pointer", textDecoration: "underline" }}
                 >
                   Disconnect
                 </button>
@@ -330,7 +427,7 @@ export default function SettingsPage() {
         </div>
       </div>
 
-      {/* Connected MCP Servers Grid */}
+      {/* Connected MCP Tool Ecosystem Grid */}
       <h3 style={{ fontSize: "1.2rem", fontWeight: 700, marginBottom: "1rem" }}>
         Connected MCP Tool Ecosystem
       </h3>

@@ -69,8 +69,8 @@ class NotionConnector(BaseConnector):
         token = await self._get_auth_token()
         if not token:
             raise ValueError(
-                "Notion execution failed: No Notion OAuth token or API key configured. "
-                "Save your token in Settings or enable Sandbox Mode."
+                "Notion execution failed: No Notion integration token configured. "
+                "Add your Notion Internal Secret (secret_...) in Settings."
             )
 
         headers = {
@@ -79,28 +79,73 @@ class NotionConnector(BaseConnector):
             "Content-Type": "application/json",
         }
 
-        notion_body: dict[str, Any] = {
-            "parent": {"database_id": database_id},
-            "properties": {
-                "title": {
-                    "title": [{"type": "text", "text": {"content": title[:2000]}}]
-                }
-            },
-        }
-
-        if details:
-            notion_body["children"] = [
-                {
-                    "object": "block",
-                    "type": "paragraph",
-                    "paragraph": {
-                        "rich_text": [{"type": "text", "text": {"content": details[:2000]}}]
-                    },
-                }
-            ]
-
         try:
-            async with httpx.AsyncClient(timeout=10.0) as client:
+            async with httpx.AsyncClient(timeout=15.0) as client:
+                target_parent: dict[str, str] | None = None
+
+                # Check if explicit database_id is provided
+                if database_id and database_id != "roadmap_db":
+                    target_parent = {"database_id": database_id}
+                else:
+                    # Dynamically search accessible Notion databases/pages for the integration
+                    search_res = await client.post(
+                        "https://api.notion.so/v1/search",
+                        json={"page_size": 5},
+                        headers=headers,
+                    )
+                    if search_res.is_success:
+                        search_data = search_res.json()
+                        results = search_data.get("results", [])
+                        for res_item in results:
+                            obj_type = res_item.get("object")
+                            if obj_type == "database":
+                                target_parent = {"database_id": res_item["id"]}
+                                break
+                            elif obj_type == "page" and not target_parent:
+                                target_parent = {"page_id": res_item["id"]}
+
+                if not target_parent:
+                    return ExecutionResult(
+                        tool=self.tool_name,
+                        status="failed",
+                        latency_ms=int((time.time() - start_time) * 1000),
+                        error=(
+                            "Notion Error: No accessible parent database or page found. "
+                            "In Notion, open your database or page, click the '...' menu -> 'Connect to' -> select your Kairos Integration."
+                        ),
+                    )
+
+                # Format Notion page payload
+                if "database_id" in target_parent:
+                    notion_body = {
+                        "parent": target_parent,
+                        "properties": {
+                            "title": {
+                                "title": [{"type": "text", "text": {"content": title[:2000]}}]
+                            }
+                        },
+                    }
+                else:
+                    notion_body = {
+                        "parent": target_parent,
+                        "properties": {
+                            "title": {
+                                "title": [{"type": "text", "text": {"content": title[:2000]}}]
+                            }
+                        },
+                    }
+
+                if details:
+                    notion_body["children"] = [
+                        {
+                            "object": "block",
+                            "type": "paragraph",
+                            "paragraph": {
+                                "rich_text": [{"type": "text", "text": {"content": details[:2000]}}]
+                            },
+                        }
+                    ]
+
                 resp = await client.post(
                     "https://api.notion.so/v1/pages",
                     json=notion_body,
@@ -120,11 +165,13 @@ class NotionConnector(BaseConnector):
                         raw_response=data,
                     )
                 else:
+                    err_json = resp.json() if resp.headers.get("content-type", "").startswith("application/json") else {}
+                    err_msg = err_json.get("message", resp.text)
                     return ExecutionResult(
                         tool=self.tool_name,
                         status="failed",
                         latency_ms=latency_ms,
-                        error=f"Notion API HTTP {resp.status_code}: {resp.text}",
+                        error=f"Notion API Error ({resp.status_code}): {err_msg}",
                     )
         except Exception as e:
             return ExecutionResult(

@@ -57,7 +57,7 @@ class McpClientManager:
         sandbox_mode: bool | None = None,
     ) -> ExecutionResult:
         """Executes action item with deduplication checks and DB logging."""
-        effective_sandbox = sandbox_mode if sandbox_mode is not None else settings.SANDBOX_MODE
+        effective_sandbox = sandbox_mode if sandbox_mode is not None else (settings.SANDBOX_MODE or settings.APP_ENV == "test")
         idempotency_hash = self.compute_idempotency_hash(batch_id, item_id, tool, payload)
 
         # 1. Idempotency Check against execution_logs

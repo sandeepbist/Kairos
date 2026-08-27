@@ -78,4 +78,8 @@ export interface ConnectorInfo {
 export interface ConnectorsStatusResponse {
   sandbox_mode: boolean;
   connectors: Record<TargetTool, ConnectorInfo>;
+  llm_providers?: {
+    gemini?: { connected: boolean; model: string };
+    openai?: { connected: boolean; model: string };
+  };
 }

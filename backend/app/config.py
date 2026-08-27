@@ -18,7 +18,7 @@ class Settings(BaseSettings):
     APP_NAME: str = "Kairos Ambient Action Agent"
     APP_ENV: Literal["development", "production", "test"] = "development"
     DEBUG: bool = True
-    SANDBOX_MODE: bool = True  # Allows full offline demo with zero OAuth friction
+    SANDBOX_MODE: bool = False  # Production default: live real API calls to MCP tools
 
     # Postgres Database
     POSTGRES_USER: str = "kairos_user"
