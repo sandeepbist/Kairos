@@ -20,6 +20,16 @@ export function PayloadModal({
 }: PayloadModalProps) {
   const [payload, setPayload] = useState<Record<string, any>>({ ...item.tool_payload });
 
+  React.useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    if (isOpen) {
+      window.addEventListener("keydown", handleKeyDown);
+    }
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isOpen, onClose]);
+
   if (!isOpen) return null;
 
   const handleChange = (field: string, value: any) => {
@@ -32,17 +42,22 @@ export function PayloadModal({
   };
 
   return (
-    <div style={{
-      position: "fixed",
-      inset: 0,
-      background: "rgba(0, 0, 0, 0.75)",
-      backdropFilter: "blur(8px)",
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "center",
-      zIndex: 100,
-      padding: "1rem",
-    }}>
+    <div
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+      style={{
+        position: "fixed",
+        inset: 0,
+        background: "rgba(0, 0, 0, 0.75)",
+        backdropFilter: "blur(8px)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        zIndex: 100,
+        padding: "1rem",
+      }}
+    >
       <div className="glass-panel" style={{
         width: "100%",
         maxWidth: "560px",
