@@ -33,18 +33,21 @@ export default function ReviewPage({
         if (data.status === "awaiting_approval" || data.status === "completed") {
           setLoading(false);
           // Initialize default approvals if not yet populated
-          if (Object.keys(decisions).length === 0 && data.items.length > 0) {
-            const initialMap: Record<string, ActionItemDecision> = {};
-            data.items.forEach((item) => {
-              initialMap[item.id] = {
-                item_id: item.id,
-                action: "APPROVE",
-                override_tool: item.suggested_tool,
-                modified_payload: item.tool_payload,
-              };
-            });
-            setDecisions(initialMap);
-          }
+          setDecisions((prev) => {
+            if (Object.keys(prev).length === 0 && data.items.length > 0) {
+              const initialMap: Record<string, ActionItemDecision> = {};
+              data.items.forEach((item) => {
+                initialMap[item.id] = {
+                  item_id: item.id,
+                  action: "APPROVE",
+                  override_tool: item.suggested_tool,
+                  modified_payload: item.tool_payload,
+                };
+              });
+              return initialMap;
+            }
+            return prev;
+          });
         }
       } catch (err: any) {
         setError(err.message || "Failed to load batch review");
@@ -54,13 +57,16 @@ export default function ReviewPage({
 
     fetchStatus();
     interval = setInterval(() => {
-      if (loading || batch?.status === "processing" || batch?.status === "executing") {
-        fetchStatus();
-      }
+      setBatch((curr) => {
+        if (!curr || curr.status === "processing" || curr.status === "executing") {
+          fetchStatus();
+        }
+        return curr;
+      });
     }, 1500);
 
     return () => clearInterval(interval);
-  }, [batchId, loading, batch?.status, decisions]);
+  }, [batchId]);
 
   const handleDecisionChange = (decision: ActionItemDecision) => {
     setDecisions((prev) => ({
