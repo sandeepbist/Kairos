@@ -117,10 +117,23 @@ class NotionConnector(BaseConnector):
 
                 # Format Notion page payload
                 if "database_id" in target_parent:
+                    db_id = target_parent["database_id"]
+                    title_prop_name = "title"
+                    try:
+                        db_meta_res = await client.get(f"https://api.notion.so/v1/databases/{db_id}", headers=headers)
+                        if db_meta_res.is_success:
+                            db_props = db_meta_res.json().get("properties", {})
+                            for prop_name, prop_meta in db_props.items():
+                                if prop_meta.get("type") == "title":
+                                    title_prop_name = prop_name
+                                    break
+                    except Exception:
+                        pass
+
                     notion_body = {
                         "parent": target_parent,
                         "properties": {
-                            "title": {
+                            title_prop_name: {
                                 "title": [{"type": "text", "text": {"content": title[:2000]}}]
                             }
                         },

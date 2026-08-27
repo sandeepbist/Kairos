@@ -56,7 +56,7 @@ class Settings(BaseSettings):
     GOOGLE_API_KEY: str | None = None
     OPENAI_API_KEY: str | None = None
     ANTHROPIC_API_KEY: str | None = None
-    DEFAULT_MODEL_NAME: str = "gemini-2.0-flash"
+    DEFAULT_MODEL_NAME: str = "gemini-2.5-flash"
 
     # Ingestion & Guardrail Thresholds
     MAX_INPUT_TOKENS: int = 3000
