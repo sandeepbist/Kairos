@@ -58,24 +58,22 @@ class RoutingMemory:
             await session.commit()
 
     async def get_all_feedback(self) -> list[dict[str, Any]]:
-        """Retrieves all feedback records from DB if cache is empty."""
-        if not self._memory_cache:
-            async with async_session_factory() as session:
-                query = select(RoutingFeedbackModel).order_by(RoutingFeedbackModel.created_at.desc())
-                result = await session.execute(query)
-                records = result.scalars().all()
-                self._memory_cache = [
-                    {
-                        "item_id": r.item_id,
-                        "batch_id": r.batch_id,
-                        "item_description": r.item_description,
-                        "suggested_tool": r.suggested_tool,
-                        "final_tool": r.final_tool,
-                        "was_overridden": r.was_overridden,
-                    }
-                    for r in records
-                ]
-        return self._memory_cache
+        """Retrieves all feedback records from DB to ensure cross-process consistency."""
+        async with async_session_factory() as session:
+            query = select(RoutingFeedbackModel).order_by(RoutingFeedbackModel.created_at.desc()).limit(200)
+            result = await session.execute(query)
+            records = result.scalars().all()
+            return [
+                {
+                    "item_id": r.item_id,
+                    "batch_id": r.batch_id,
+                    "item_description": r.item_description,
+                    "suggested_tool": r.suggested_tool,
+                    "final_tool": r.final_tool,
+                    "was_overridden": r.was_overridden,
+                }
+                for r in records
+            ]
 
     async def query_routing_preference(
         self,

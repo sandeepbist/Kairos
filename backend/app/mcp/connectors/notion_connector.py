@@ -1,17 +1,41 @@
-"""Notion Connector: Integrates with official Notion MCP Server and Sandbox Mock."""
+"""Notion Connector: Integrates with Official Notion API / MCP Server and Sandbox."""
 import time
+import os
 import uuid
-import hashlib
+import httpx
 from typing import Any
+from sqlalchemy import select
+from app.config import settings
+from app.db.session import async_session_factory
+from app.db.models import OAuthTokenModel
+from app.core.security import decrypt_token
 from .base import BaseConnector, ExecutionResult
 
 
 class NotionConnector(BaseConnector):
-    """Executes action items to Notion pages and databases."""
+    """Executes action items to Notion Workspace."""
 
     @property
     def tool_name(self) -> str:
         return "notion"
+
+    async def health_check(self) -> bool:
+        """Verifies Notion connectivity or Sandbox readiness."""
+        if settings.SANDBOX_MODE:
+            return True
+        token = await self._get_auth_token()
+        return token is not None
+
+    async def _get_auth_token(self) -> str | None:
+        """Retrieves decrypted OAuth token from Postgres or env fallback."""
+        async with async_session_factory() as session:
+            query = select(OAuthTokenModel).where(OAuthTokenModel.provider == "notion")
+            res = await session.execute(query)
+            record = res.scalar_one_or_none()
+            if record and record.access_token_enc:
+                return decrypt_token(record.access_token_enc)
+
+        return os.getenv("NOTION_API_KEY")
 
     async def execute(
         self,
@@ -20,49 +44,94 @@ class NotionConnector(BaseConnector):
     ) -> ExecutionResult:
         start_time = time.time()
         title = payload.get("title") or payload.get("summary") or payload.get("description") or "Untitled Notion Page"
-        database_id = payload.get("database_id", "default_db")
+        database_id = payload.get("database_id") or os.getenv("NOTION_DATABASE_ID", "roadmap_db")
+        details = payload.get("details") or payload.get("description", "")
+
+        # 1. Sandbox Emulation Mode
+        if sandbox_mode:
+            fake_id = str(uuid.uuid4()).replace("-", "")
+            simulated_url = f"https://notion.so/{fake_id}"
+            latency_ms = int((time.time() - start_time) * 1000) + 80
+
+            return ExecutionResult(
+                tool=self.tool_name,
+                status="success",
+                external_url=simulated_url,
+                latency_ms=latency_ms,
+                raw_response={
+                    "id": fake_id,
+                    "title": title,
+                    "database_id": database_id,
+                    "url": simulated_url,
+                    "mode": "sandbox",
+                },
+            )
+
+        # 2. Live Notion API v1 Execution
+        token = await self._get_auth_token()
+        if not token:
+            raise ValueError(
+                "Notion execution failed: No Notion OAuth token or API key configured. "
+                "Save your token in Settings or enable Sandbox Mode."
+            )
+
+        headers = {
+            "Authorization": f"Bearer {token}",
+            "Notion-Version": "2022-06-28",
+            "Content-Type": "application/json",
+        }
+
+        notion_body: dict[str, Any] = {
+            "parent": {"database_id": database_id},
+            "properties": {
+                "title": {
+                    "title": [{"type": "text", "text": {"content": title[:2000]}}]
+                }
+            },
+        }
+
+        if details:
+            notion_body["children"] = [
+                {
+                    "object": "block",
+                    "type": "paragraph",
+                    "paragraph": {
+                        "rich_text": [{"type": "text", "text": {"content": details[:2000]}}]
+                    },
+                }
+            ]
 
         try:
-            if sandbox_mode:
-                # High-fidelity realistic sandbox execution
-                page_hash = hashlib.md5(f"{title}:{time.time()}".encode()).hexdigest()[:12]
-                simulated_url = f"https://notion.so/workspace/page-{page_hash}"
-                latency_ms = int((time.time() - start_time) * 1000) + 45  # simulate API latency
-
-                return ExecutionResult(
-                    tool=self.tool_name,
-                    status="success",
-                    external_url=simulated_url,
-                    latency_ms=latency_ms,
-                    raw_response={
-                        "id": f"notion-page-{page_hash}",
-                        "title": title,
-                        "database_id": database_id,
-                        "url": simulated_url,
-                        "mode": "sandbox",
-                    },
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                resp = await client.post(
+                    "https://api.notion.so/v1/pages",
+                    json=notion_body,
+                    headers=headers,
                 )
-            else:
-                # Real MCP Server call logic (via OAuth token & Notion MCP tool invocation)
-                # When real OAuth token is configured:
-                page_hash = hashlib.md5(f"{title}:{time.time()}".encode()).hexdigest()[:12]
-                simulated_url = f"https://notion.so/workspace/page-{page_hash}"
                 latency_ms = int((time.time() - start_time) * 1000)
-                return ExecutionResult(
-                    tool=self.tool_name,
-                    status="success",
-                    external_url=simulated_url,
-                    latency_ms=latency_ms,
-                    raw_response={"id": page_hash, "url": simulated_url},
-                )
+
+                if resp.is_success:
+                    data = resp.json()
+                    page_id = data.get("id", "").replace("-", "")
+                    page_url = data.get("url") or f"https://notion.so/{page_id}"
+                    return ExecutionResult(
+                        tool=self.tool_name,
+                        status="success",
+                        external_url=page_url,
+                        latency_ms=latency_ms,
+                        raw_response=data,
+                    )
+                else:
+                    return ExecutionResult(
+                        tool=self.tool_name,
+                        status="failed",
+                        latency_ms=latency_ms,
+                        error=f"Notion API HTTP {resp.status_code}: {resp.text}",
+                    )
         except Exception as e:
-            latency_ms = int((time.time() - start_time) * 1000)
             return ExecutionResult(
                 tool=self.tool_name,
                 status="failed",
-                latency_ms=latency_ms,
+                latency_ms=int((time.time() - start_time) * 1000),
                 error=str(e),
             )
-
-    async def health_check(self) -> bool:
-        return True
