@@ -189,7 +189,7 @@ export default function SettingsPage() {
           <div style={{ display: "flex", gap: "0.5rem" }}>
             <input
               type="password"
-              placeholder="secret_xxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+              placeholder="Enter Notion Internal Integration Secret"
               value={notionToken}
               onChange={(e) => setNotionToken(e.target.value)}
               style={{
@@ -247,7 +247,7 @@ export default function SettingsPage() {
           <div style={{ display: "flex", gap: "0.5rem" }}>
             <input
               type="password"
-              placeholder="ATATT3xFfGF0xxxxxxxxxxxxxxxxxxxxxxxx"
+              placeholder="Enter Atlassian Jira API Token"
               value={jiraToken}
               onChange={(e) => setJiraToken(e.target.value)}
               style={{
@@ -305,7 +305,7 @@ export default function SettingsPage() {
           <div style={{ display: "flex", gap: "0.5rem" }}>
             <input
               type="password"
-              placeholder="ya29.a0AfH6SMxxxxxxxxxxxxxxxxxxxxxxxx"
+              placeholder="Enter Google Calendar OAuth Access Token"
               value={calendarToken}
               onChange={(e) => setCalendarToken(e.target.value)}
               style={{
