@@ -89,6 +89,23 @@ async def save_oauth_token(
     return {"status": "saved", "provider": provider}
 
 
+@router.delete("/oauth/{provider}", response_model=dict[str, str])
+async def delete_oauth_token(
+    provider: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """Removes stored OAuth credentials for a provider from Postgres vault."""
+    prov = provider.lower().strip()
+    query = select(OAuthTokenModel).where(OAuthTokenModel.provider == prov)
+    res = await db.execute(query)
+    record = res.scalar_one_or_none()
+    if record:
+        await db.delete(record)
+        await db.commit()
+    return {"status": "deleted", "provider": prov}
+
+
+
 @router.post("/sandbox-toggle", response_model=dict[str, Any])
 async def toggle_sandbox_mode(
     request: SandboxToggleRequest,

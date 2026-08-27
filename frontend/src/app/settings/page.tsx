@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import { getConnectorsStatus, toggleSandbox, saveOAuthToken } from "@/lib/api";
+import { getConnectorsStatus, toggleSandbox, saveOAuthToken, deleteOAuthToken } from "@/lib/api";
 import { ConnectorsStatusResponse } from "@/lib/types";
 
 export default function SettingsPage() {
@@ -72,6 +72,27 @@ export default function SettingsPage() {
     }
   };
 
+  const handleDeleteToken = async (provider: string) => {
+    setSavingProvider(provider);
+    setMessage(null);
+    try {
+      await deleteOAuthToken(provider);
+      setMessage({
+        text: `Disconnected ${provider.toUpperCase()} credentials from PostgreSQL Vault.`,
+        type: "info",
+      });
+      loadStatus();
+    } catch (err: any) {
+      setMessage({ text: err.message || `Failed to disconnect ${provider}`, type: "error" });
+    } finally {
+      setSavingProvider(null);
+    }
+  };
+
+  const isNotionConnected = Boolean(status?.connectors?.notion?.oauth_connected);
+  const isJiraConnected = Boolean(status?.connectors?.jira?.oauth_connected);
+  const isCalendarConnected = Boolean(status?.connectors?.calendar?.oauth_connected);
+
   return (
     <div className="container" style={{ maxWidth: "980px" }}>
       <div style={{ marginBottom: "2rem" }}>
@@ -138,8 +159,28 @@ export default function SettingsPage() {
         <div className="glass-panel" style={{ padding: "1.25rem" }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.5rem" }}>
             <span style={{ fontWeight: 700, color: "#c084fc", fontSize: "0.95rem" }}>Notion Integration Token (secret_...)</span>
-            {status?.connectors?.notion?.oauth_connected && (
-              <span className="badge badge-confidence-high">✓ Connected in Vault</span>
+            {isNotionConnected ? (
+              <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                <span className="badge badge-confidence-high">✓ Connected in Vault</span>
+                <button
+                  onClick={() => handleDeleteToken("notion")}
+                  disabled={savingProvider === "notion"}
+                  style={{
+                    background: "none",
+                    border: "none",
+                    color: "var(--text-muted)",
+                    fontSize: "0.75rem",
+                    cursor: "pointer",
+                    textDecoration: "underline",
+                  }}
+                >
+                  Disconnect
+                </button>
+              </div>
+            ) : (
+              <span className="badge" style={{ background: "rgba(255, 255, 255, 0.05)", color: "var(--text-muted)" }}>
+                Not Configured
+              </span>
             )}
           </div>
           <p style={{ fontSize: "0.8rem", color: "var(--text-muted)", marginBottom: "0.75rem" }}>
@@ -167,7 +208,7 @@ export default function SettingsPage() {
               className="btn btn-secondary"
               style={{ fontSize: "0.85rem", padding: "0.5rem 1rem" }}
             >
-              {savingProvider === "notion" ? "Saving..." : "Save Notion Token"}
+              {savingProvider === "notion" ? "Saving..." : isNotionConnected ? "Update Token" : "Save Notion Token"}
             </button>
           </div>
         </div>
@@ -176,8 +217,28 @@ export default function SettingsPage() {
         <div className="glass-panel" style={{ padding: "1.25rem" }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.5rem" }}>
             <span style={{ fontWeight: 700, color: "#60a5fa", fontSize: "0.95rem" }}>Atlassian Jira API Token / Bearer Token</span>
-            {status?.connectors?.jira?.oauth_connected && (
-              <span className="badge badge-confidence-high">✓ Connected in Vault</span>
+            {isJiraConnected ? (
+              <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                <span className="badge badge-confidence-high">✓ Connected in Vault</span>
+                <button
+                  onClick={() => handleDeleteToken("jira")}
+                  disabled={savingProvider === "jira"}
+                  style={{
+                    background: "none",
+                    border: "none",
+                    color: "var(--text-muted)",
+                    fontSize: "0.75rem",
+                    cursor: "pointer",
+                    textDecoration: "underline",
+                  }}
+                >
+                  Disconnect
+                </button>
+              </div>
+            ) : (
+              <span className="badge" style={{ background: "rgba(255, 255, 255, 0.05)", color: "var(--text-muted)" }}>
+                Not Configured
+              </span>
             )}
           </div>
           <p style={{ fontSize: "0.8rem", color: "var(--text-muted)", marginBottom: "0.75rem" }}>
@@ -205,7 +266,7 @@ export default function SettingsPage() {
               className="btn btn-secondary"
               style={{ fontSize: "0.85rem", padding: "0.5rem 1rem" }}
             >
-              {savingProvider === "jira" ? "Saving..." : "Save Jira Token"}
+              {savingProvider === "jira" ? "Saving..." : isJiraConnected ? "Update Token" : "Save Jira Token"}
             </button>
           </div>
         </div>
@@ -214,8 +275,28 @@ export default function SettingsPage() {
         <div className="glass-panel" style={{ padding: "1.25rem" }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.5rem" }}>
             <span style={{ fontWeight: 700, color: "#34d399", fontSize: "0.95rem" }}>Google Calendar OAuth Access Token</span>
-            {status?.connectors?.calendar?.oauth_connected && (
-              <span className="badge badge-confidence-high">✓ Connected in Vault</span>
+            {isCalendarConnected ? (
+              <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                <span className="badge badge-confidence-high">✓ Connected in Vault</span>
+                <button
+                  onClick={() => handleDeleteToken("google_calendar")}
+                  disabled={savingProvider === "google_calendar"}
+                  style={{
+                    background: "none",
+                    border: "none",
+                    color: "var(--text-muted)",
+                    fontSize: "0.75rem",
+                    cursor: "pointer",
+                    textDecoration: "underline",
+                  }}
+                >
+                  Disconnect
+                </button>
+              </div>
+            ) : (
+              <span className="badge" style={{ background: "rgba(255, 255, 255, 0.05)", color: "var(--text-muted)" }}>
+                Not Configured
+              </span>
             )}
           </div>
           <p style={{ fontSize: "0.8rem", color: "var(--text-muted)", marginBottom: "0.75rem" }}>
@@ -243,7 +324,7 @@ export default function SettingsPage() {
               className="btn btn-secondary"
               style={{ fontSize: "0.85rem", padding: "0.5rem 1rem" }}
             >
-              {savingProvider === "google_calendar" ? "Saving..." : "Save Calendar Token"}
+              {savingProvider === "google_calendar" ? "Saving..." : isCalendarConnected ? "Update Token" : "Save Calendar Token"}
             </button>
           </div>
         </div>
@@ -259,7 +340,11 @@ export default function SettingsPage() {
         <div className="glass-panel" style={{ padding: "1.25rem" }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.75rem" }}>
             <span style={{ fontWeight: 700, fontSize: "1rem", color: "#c084fc" }}>Notion API / MCP</span>
-            <span className="badge badge-confidence-high">🟢 Active</span>
+            {isNotionConnected ? (
+              <span className="badge badge-confidence-high">🟢 Connected</span>
+            ) : (
+              <span className="badge" style={{ background: "rgba(255, 255, 255, 0.05)", color: "var(--text-muted)" }}>⚪ Disconnected</span>
+            )}
           </div>
           <p style={{ fontSize: "0.8rem", color: "var(--text-secondary)", lineHeight: 1.5 }}>
             Official Notion API v1 & Model Context Protocol. Creates database pages with rich text blocks and returns real URLs.
@@ -273,7 +358,11 @@ export default function SettingsPage() {
         <div className="glass-panel" style={{ padding: "1.25rem" }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.75rem" }}>
             <span style={{ fontWeight: 700, fontSize: "1rem", color: "#60a5fa" }}>Atlassian Jira REST API v3</span>
-            <span className="badge badge-confidence-high">🟢 Active</span>
+            {isJiraConnected ? (
+              <span className="badge badge-confidence-high">🟢 Connected</span>
+            ) : (
+              <span className="badge" style={{ background: "rgba(255, 255, 255, 0.05)", color: "var(--text-muted)" }}>⚪ Disconnected</span>
+            )}
           </div>
           <p style={{ fontSize: "0.8rem", color: "var(--text-secondary)", lineHeight: 1.5 }}>
             Atlassian Jira Cloud REST API v3 & Rovo MCP. Creates Bug, Story, and Task issues with Atlassian Document Format.
@@ -287,7 +376,11 @@ export default function SettingsPage() {
         <div className="glass-panel" style={{ padding: "1.25rem" }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.75rem" }}>
             <span style={{ fontWeight: 700, fontSize: "1rem", color: "#34d399" }}>Google Calendar API v3</span>
-            <span className="badge badge-confidence-high">🟢 Active</span>
+            {isCalendarConnected ? (
+              <span className="badge badge-confidence-high">🟢 Connected</span>
+            ) : (
+              <span className="badge" style={{ background: "rgba(255, 255, 255, 0.05)", color: "var(--text-muted)" }}>⚪ Disconnected</span>
+            )}
           </div>
           <p style={{ fontSize: "0.8rem", color: "var(--text-secondary)", lineHeight: 1.5 }}>
             Google Calendar API v3 with attendee invitations, pop-up notifications, and timezone synchronization.
@@ -301,7 +394,7 @@ export default function SettingsPage() {
         <div className="glass-panel" style={{ padding: "1.25rem", border: "1px solid rgba(245, 158, 11, 0.3)" }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.75rem" }}>
             <span style={{ fontWeight: 700, fontSize: "1rem", color: "#fbbf24" }}>Task Ledger (Custom Server)</span>
-            <span className="badge" style={{ background: "rgba(245, 158, 11, 0.2)", color: "#fbbf24" }}>⭐ Custom MCP</span>
+            <span className="badge" style={{ background: "rgba(245, 158, 11, 0.2)", color: "#fbbf24" }}>⭐ Custom MCP (Active)</span>
           </div>
           <p style={{ fontSize: "0.8rem", color: "var(--text-secondary)", lineHeight: 1.5 }}>
             Native FastMCP 2.x server backed by PostgreSQL. Provides standalone fallback task management when external tools are unmapped.

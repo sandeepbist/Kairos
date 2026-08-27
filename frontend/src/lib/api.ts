@@ -112,3 +112,15 @@ export async function saveOAuthToken(
   return res.json();
 }
 
+export async function deleteOAuthToken(provider: string): Promise<{ status: string; provider: string }> {
+  const res = await fetch(`${API_BASE}/connectors/oauth/${provider}`, {
+    method: "DELETE",
+    headers: { "Content-Type": "application/json" },
+  });
+  if (!res.ok) {
+    throw new Error(`Failed to delete OAuth token for ${provider}`);
+  }
+  return res.json();
+}
+
+
