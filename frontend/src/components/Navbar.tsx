@@ -22,11 +22,16 @@ export function Navbar() {
     { href: "/settings", label: "Settings" },
   ];
 
+  const isNotionConnected = Boolean(status?.connectors?.notion?.oauth_connected);
+  const isJiraConnected = Boolean(status?.connectors?.jira?.oauth_connected);
+  const isCalendarConnected = Boolean(status?.connectors?.calendar?.oauth_connected);
+  const isTaskLedgerConnected = Boolean(status?.connectors?.task_ledger?.healthy ?? true);
+
   return (
     <header
       style={{
         borderBottom: "1px solid var(--border-subtle)",
-        background: "rgba(0, 0, 0, 0.8)",
+        background: "rgba(0, 0, 0, 0.85)",
         backdropFilter: "blur(20px)",
         WebkitBackdropFilter: "blur(20px)",
         position: "sticky",
@@ -110,36 +115,79 @@ export function Navbar() {
           </nav>
         </div>
 
-        {/* Live Ecosystem Status */}
-        <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
-          <div className="pill" style={{ fontSize: "0.75rem", padding: "0.2rem 0.55rem" }}>
-            <span className="dot dot-green" />
+        {/* Dynamic Connector Status Badges */}
+        <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+          <Link
+            href="/settings"
+            className="pill"
+            style={{
+              fontSize: "0.75rem",
+              textDecoration: "none",
+              color: isNotionConnected ? "#d8b4fe" : "var(--text-dim)",
+              borderColor: isNotionConnected ? "rgba(168, 85, 247, 0.3)" : "var(--border-subtle)",
+            }}
+            title={isNotionConnected ? "Notion API Connected" : "Notion Not Connected — Click to add token in Settings"}
+          >
+            <span className={`dot ${isNotionConnected ? "dot-green" : ""}`} style={{ background: isNotionConnected ? "#10b981" : "#52525b" }} />
             <span>Notion</span>
-          </div>
-          <div className="pill" style={{ fontSize: "0.75rem", padding: "0.2rem 0.55rem" }}>
-            <span className="dot dot-green" />
+          </Link>
+
+          <Link
+            href="/settings"
+            className="pill"
+            style={{
+              fontSize: "0.75rem",
+              textDecoration: "none",
+              color: isJiraConnected ? "#93c5fd" : "var(--text-dim)",
+              borderColor: isJiraConnected ? "rgba(59, 130, 246, 0.3)" : "var(--border-subtle)",
+            }}
+            title={isJiraConnected ? "Jira Cloud API Connected" : "Jira Not Connected — Click to add token in Settings"}
+          >
+            <span className={`dot ${isJiraConnected ? "dot-green" : ""}`} style={{ background: isJiraConnected ? "#10b981" : "#52525b" }} />
             <span>Jira</span>
-          </div>
-          <div className="pill" style={{ fontSize: "0.75rem", padding: "0.2rem 0.55rem" }}>
-            <span className="dot dot-green" />
+          </Link>
+
+          <Link
+            href="/settings"
+            className="pill"
+            style={{
+              fontSize: "0.75rem",
+              textDecoration: "none",
+              color: isCalendarConnected ? "#6ee7b7" : "var(--text-dim)",
+              borderColor: isCalendarConnected ? "rgba(16, 185, 129, 0.3)" : "var(--border-subtle)",
+            }}
+            title={isCalendarConnected ? "Google Calendar API Connected" : "Calendar Not Connected — Click to add token in Settings"}
+          >
+            <span className={`dot ${isCalendarConnected ? "dot-green" : ""}`} style={{ background: isCalendarConnected ? "#10b981" : "#52525b" }} />
             <span>Calendar</span>
-          </div>
-          <div className="pill" style={{ fontSize: "0.75rem", padding: "0.2rem 0.55rem" }}>
-            <span className="dot dot-green" />
-            <span>Task Ledger</span>
-          </div>
+          </Link>
 
           <div
             className="pill"
             style={{
+              fontSize: "0.75rem",
+              color: isTaskLedgerConnected ? "#fcd34d" : "var(--text-dim)",
+              borderColor: "rgba(245, 158, 11, 0.3)",
+            }}
+            title="Internal Task Ledger MCP Server active on PostgreSQL"
+          >
+            <span className="dot dot-green" />
+            <span>Task Ledger</span>
+          </div>
+
+          <Link
+            href="/settings"
+            className="pill"
+            style={{
               fontSize: "0.7rem",
+              textDecoration: "none",
               background: status?.sandbox_mode ? "rgba(245, 158, 11, 0.1)" : "rgba(16, 185, 129, 0.1)",
               borderColor: status?.sandbox_mode ? "rgba(245, 158, 11, 0.2)" : "rgba(16, 185, 129, 0.2)",
               color: status?.sandbox_mode ? "#fbbf24" : "#34d399",
             }}
           >
-            {status?.sandbox_mode ? "Sandbox" : "Live MCP"}
-          </div>
+            {status?.sandbox_mode ? "⚡ Sandbox" : "🟢 Live Mode"}
+          </Link>
         </div>
       </div>
     </header>

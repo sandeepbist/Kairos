@@ -44,7 +44,7 @@ Hi Team,
 
 export default function IngestPage() {
   const router = useRouter();
-  const [rawText, setRawText] = useState(SAMPLE_PRESETS.meeting.text);
+  const [rawText, setRawText] = useState("");
   const [sourceType, setSourceType] = useState<SourceType>("meeting_transcript");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);

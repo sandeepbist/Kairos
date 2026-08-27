@@ -20,11 +20,9 @@ class JiraConnector(BaseConnector):
         return "jira"
 
     async def health_check(self) -> bool:
-        """Verifies Jira connectivity or Sandbox readiness."""
-        if settings.SANDBOX_MODE:
-            return True
+        """Verifies whether real Jira credentials exist in OAuth vault or env."""
         token, _, _ = await self._get_auth_credentials()
-        return token is not None
+        return bool(token and token.strip())
 
     async def _get_auth_credentials(self) -> tuple[str | None, str | None, str | None]:
         """Retrieves decrypted OAuth token from Postgres or env fallback."""

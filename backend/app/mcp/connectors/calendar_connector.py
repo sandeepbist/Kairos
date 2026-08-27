@@ -20,11 +20,9 @@ class CalendarConnector(BaseConnector):
         return "calendar"
 
     async def health_check(self) -> bool:
-        """Verifies Google Calendar connectivity or Sandbox readiness."""
-        if settings.SANDBOX_MODE:
-            return True
+        """Verifies whether real Google Calendar credentials exist in OAuth vault or env."""
         token = await self._get_auth_token()
-        return token is not None
+        return bool(token and token.strip())
 
     async def _get_auth_token(self) -> str | None:
         """Retrieves decrypted OAuth token from Postgres or env fallback."""
