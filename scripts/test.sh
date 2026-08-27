@@ -8,6 +8,24 @@ echo "=================================================="
 echo "  Running Kairos Full Battle Test Suite           "
 echo "=================================================="
 
+# Ensure infrastructure containers are up if down
+if ! (echo > /dev/tcp/127.0.0.1/5435) 2>/dev/null; then
+  echo "📦 Starting isolated Docker services (PostgreSQL, Redis, Temporal)..."
+  if command -v docker-compose &> /dev/null; then
+    docker-compose up -d
+  else
+    docker compose up -d
+  fi
+  echo "⏳ Waiting for database and Temporal to be ready..."
+  for i in {1..20}; do
+    if (echo > /dev/tcp/127.0.0.1/5435) 2>/dev/null && ((echo > /dev/tcp/127.0.0.1/7234) 2>/dev/null || nc -z localhost 7234 2>/dev/null); then
+      break
+    fi
+    sleep 1
+  done
+  echo "✓ Infrastructure ready."
+fi
+
 source "$ROOT_DIR/.venv/bin/activate"
 export PYTHONPATH="$ROOT_DIR/backend"
 export APP_ENV=test
