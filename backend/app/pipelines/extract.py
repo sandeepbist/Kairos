@@ -75,13 +75,17 @@ def deterministic_fallback_extractor(
                     if name.lower() not in {"file", "update", "fix", "check", "send", "review", "schedule", "create", "make"}:
                         suggested_assignee = name
 
-            # 3. Determine Tool & Actionability Type
+            # Determine Tool & Actionability Type
             suggested_tool = "task_ledger"
             actionability_type = "task"
             confidence = 0.82
             priority = "medium"
 
-            if any(k in content_lower for k in calendar_keywords):
+            if any(k in content_lower for k in notion_keywords):
+                suggested_tool = "notion"
+                actionability_type = "task"
+                confidence = 0.85
+            elif any(k in content_lower for k in calendar_keywords):
                 suggested_tool = "calendar"
                 actionability_type = "calendar_event"
                 confidence = 0.90
@@ -91,10 +95,6 @@ def deterministic_fallback_extractor(
                 confidence = 0.88
                 if "bug" in content_lower or "crash" in content_lower or "urgent" in content_lower:
                     priority = "high"
-            elif any(k in content_lower for k in notion_keywords):
-                suggested_tool = "notion"
-                actionability_type = "task"
-                confidence = 0.85
 
             # 4. Generate Tool-Specific Payload
             item_id = str(uuid.uuid4())

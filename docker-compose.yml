@@ -35,7 +35,7 @@ services:
     image: temporalio/temporal:1.8.2
     container_name: kairos-temporal
     restart: unless-stopped
-    command: ["server", "start-dev", "--port", "7234", "--ui-port", "8234", "--db-filename", "/tmp/temporal.db"]
+    command: ["server", "start-dev", "--ip", "0.0.0.0", "--ui-ip", "0.0.0.0", "--port", "7234", "--ui-port", "8234", "--db-filename", "/tmp/temporal.db"]
     ports:
       - "7234:7234"
       - "8234:8234"

@@ -1,16 +1,28 @@
 """Routing Memory: Learns user preferences, positive confirmations, and negative constraints."""
-from typing import Any
 import re
+from typing import Any
 from sqlalchemy import select
 from app.db.session import async_session_factory
 from app.db.models import RoutingFeedbackModel
+
+STOPWORDS = {
+    "the", "a", "an", "in", "on", "at", "to", "for", "of", "with", "by", "from",
+    "is", "it", "and", "or", "be", "will", "i", "let", "me", "we", "you", "they",
+    "this", "that", "please", "sure", "can", "could", "would", "should", "task",
+    "item", "do", "done", "get", "got", "my", "your", "our", "their", "all"
+}
+
+
+def extract_keywords(text: str) -> set[str]:
+    """Extracts meaningful domain terms by filtering out common stopwords."""
+    words = re.findall(r"\w+", text.lower())
+    return {w for w in words if len(w) > 2 and w not in STOPWORDS}
 
 
 class RoutingMemory:
     """Manages adaptive routing memory with positive reinforcement and negative constraint penalization."""
 
     def __init__(self):
-        # In-memory fast cache for quick lookup
         self._memory_cache: list[dict[str, Any]] = []
 
     async def record_feedback(
@@ -73,52 +85,42 @@ class RoutingMemory:
     ) -> dict[str, Any]:
         """
         Evaluates past feedback to apply positive reinforcement or negative constraint overrides.
-        Returns:
-            - suggested_tool: str
-            - confidence_adjustment: float (+0.1 to +0.2 if confirmed, -0.2 to -0.4 if historically overridden)
-            - reason: str | None
+        Requires genuine domain keyword overlap (>= 2 key domain terms).
         """
         feedback_list = await self.get_all_feedback()
-        desc_words = set(re.findall(r"\w+", description.lower()))
+        desc_keywords = extract_keywords(description)
 
-        # Check for matching patterns in past feedback
         tool_votes: dict[str, int] = {}
         penalized_tools: set[str] = set()
 
         for entry in feedback_list:
-            past_words = set(re.findall(r"\w+", entry["item_description"].lower()))
-            overlap = len(desc_words.intersection(past_words))
+            past_keywords = extract_keywords(entry["item_description"])
+            overlap = len(desc_keywords.intersection(past_keywords))
 
-            # If semantic/keyword overlap is significant (e.g. >= 2 key terms)
+            # Only consider genuine domain keyword matches (>= 2 domain words)
             if overlap >= 2:
                 if entry["was_overridden"]:
-                    # Negative constraint: penalize the suggested tool that was rejected
                     penalized_tools.add(entry["suggested_tool"])
-                    # Positive vote for the tool the user actually chose
-                    tool_votes[entry["final_tool"]] = tool_votes.get(entry["final_tool"], 0) + 2
+                    if entry["final_tool"] != "rejected":
+                        tool_votes[entry["final_tool"]] = tool_votes.get(entry["final_tool"], 0) + 2
                 else:
-                    # Positive reinforcement for confirmed tool
                     tool_votes[entry["final_tool"]] = tool_votes.get(entry["final_tool"], 0) + 1
 
-        # Determine if we should override or adjust confidence
         if tool_votes:
             best_tool = max(tool_votes, key=tool_votes.get)
             if best_tool != initial_tool.lower():
-                # Learned override
                 return {
                     "suggested_tool": best_tool,
                     "confidence_adjustment": 0.15,
                     "reason": f"Learned preference: past similar items were routed to {best_tool}",
                 }
             else:
-                # Reinforced confirmation
                 return {
                     "suggested_tool": initial_tool,
                     "confidence_adjustment": 0.1,
                     "reason": "Reinforced: user consistently confirms this routing",
                 }
         elif initial_tool.lower() in penalized_tools:
-            # Penalized without clear winner
             return {
                 "suggested_tool": initial_tool,
                 "confidence_adjustment": -0.25,
