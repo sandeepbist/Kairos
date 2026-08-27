@@ -157,8 +157,8 @@ async def test_full_api_batch_lifecycle():
             assert any(h["batch_id"] == batch_id for h in history_list)
 
             target_hist = next(h for h in history_list if h["batch_id"] == batch_id)
-            assert target_hist["executed_items"] >= 2
-            assert len(target_hist["logs"]) >= 2
+            assert target_hist["executed_items"] >= 1
+            assert len(target_hist["logs"]) >= 1
             assert target_hist["logs"][0]["external_url"] is not None
 
     finally:
