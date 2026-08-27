@@ -88,3 +88,27 @@ export async function toggleSandbox(sandbox_mode: boolean): Promise<any> {
   }
   return res.json();
 }
+
+export async function saveOAuthToken(
+  provider: string,
+  accessToken: string,
+  refreshToken?: string,
+  scopes?: string
+): Promise<{ status: string; provider: string }> {
+  const res = await fetch(`${API_BASE}/connectors/oauth/save`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      provider,
+      access_token: accessToken,
+      refresh_token: refreshToken,
+      scopes,
+    }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: "Failed to save token" }));
+    throw new Error(err.detail || "Failed to save OAuth credentials");
+  }
+  return res.json();
+}
+
