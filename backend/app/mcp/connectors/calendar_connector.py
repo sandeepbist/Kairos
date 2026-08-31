@@ -10,6 +10,7 @@ from app.db.session import async_session_factory
 from app.db.models import OAuthTokenModel
 from app.core.security import decrypt_token
 from .base import BaseConnector, ExecutionResult
+from .http import connector_http_client
 
 
 class CalendarConnector(BaseConnector):
@@ -95,7 +96,7 @@ class CalendarConnector(BaseConnector):
         }
 
         try:
-            async with httpx.AsyncClient(timeout=10.0) as client:
+            async with connector_http_client(timeout=10.0) as client:
                 resp = await client.post(
                     "https://www.googleapis.com/calendar/v3/calendars/primary/events",
                     json=cal_body,

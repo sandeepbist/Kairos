@@ -10,6 +10,7 @@ from app.db.session import async_session_factory
 from app.db.models import OAuthTokenModel
 from app.core.security import decrypt_token
 from .base import BaseConnector, ExecutionResult
+from .http import connector_http_client
 
 
 class JiraConnector(BaseConnector):
@@ -87,23 +88,29 @@ class JiraConnector(BaseConnector):
                 "Configure Jira in Settings or enable Sandbox Mode."
             )
 
-        jira_payload = {
-            "fields": {
-                "project": {"key": project_key},
-                "summary": summary[:255],
-                "description": {
-                    "type": "doc",
-                    "version": 1,
-                    "content": [
-                        {
-                            "type": "paragraph",
-                            "content": [{"type": "text", "text": description}],
-                        }
-                    ],
-                },
-                "issuetype": {"name": issue_type},
-            }
+        jira_fields: dict[str, Any] = {
+            "project": {"key": project_key},
+            "summary": summary[:255],
+            "description": {
+                "type": "doc",
+                "version": 1,
+                "content": [
+                    {
+                        "type": "paragraph",
+                        "content": [{"type": "text", "text": description}],
+                    }
+                ],
+            },
+            "issuetype": {"name": issue_type},
         }
+        # Optional fields: only set what the operator's payload provides.
+        if priority:
+            jira_fields["priority"] = {"name": str(priority).capitalize()}
+        due_date = payload.get("due_date")
+        if due_date:
+            jira_fields["duedate"] = str(due_date)
+
+        jira_payload = {"fields": jira_fields}
 
         headers = {"Content-Type": "application/json"}
         auth = None
@@ -113,7 +120,7 @@ class JiraConnector(BaseConnector):
             headers["Authorization"] = f"Bearer {token}"
 
         try:
-            async with httpx.AsyncClient(timeout=10.0) as client:
+            async with connector_http_client(timeout=10.0) as client:
                 resp = await client.post(
                     f"{base_url}/rest/api/3/issue",
                     json=jira_payload,

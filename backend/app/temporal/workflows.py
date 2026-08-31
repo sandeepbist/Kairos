@@ -66,7 +66,7 @@ class ProcessBatchWorkflow:
                 timeout=timedelta(days=7),
             )
         except TimeoutError:
-            workflow.logger.warn(f"Batch {batch_id} timed out waiting for approval. Auto-archiving.")
+            workflow.logger.warning(f"Batch {batch_id} timed out waiting for approval. Auto-archiving.")
             await workflow.execute_activity(
                 expire_batch_activity,
                 args=[batch_id],
@@ -75,9 +75,21 @@ class ProcessBatchWorkflow:
             return {"batch_id": batch_id, "status": "expired", "reason": "Approval timed out after 7 days"}
 
         # 4. Process User Decisions (Per-Item Independent Activities with Retry)
+        # Reject decisions whose item_id is not part of this batch's extracted
+        # items — a stale or forged signal must never trigger execution.
+        known_item_ids = {i.get("id") for i in routed_items}
         execution_results = []
         for decision in self._decisions:
             item_id = decision["item_id"]
+            if item_id not in known_item_ids:
+                workflow.logger.warning(
+                    f"Skipping decision for unknown item {item_id} in batch {batch_id}"
+                )
+                execution_results.append(
+                    {"item_id": item_id, "status": "skipped_unknown_item"}
+                )
+                continue
+
             action = decision.get("action") or decision.get("decision") or "APPROVE"
             rejection_reason = decision.get("rejection_reason")
 

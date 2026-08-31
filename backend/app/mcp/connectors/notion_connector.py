@@ -10,6 +10,7 @@ from app.db.session import async_session_factory
 from app.db.models import OAuthTokenModel
 from app.core.security import decrypt_token
 from .base import BaseConnector, ExecutionResult
+from .http import connector_http_client
 
 
 class NotionConnector(BaseConnector):
@@ -80,7 +81,7 @@ class NotionConnector(BaseConnector):
         }
 
         try:
-            async with httpx.AsyncClient(timeout=15.0) as client:
+            async with connector_http_client(timeout=15.0) as client:
                 target_parent: dict[str, str] | None = None
 
                 # Check if explicit database_id is provided
