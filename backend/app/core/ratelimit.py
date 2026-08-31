@@ -1,0 +1,102 @@
+"""Rate limiting middleware backed by an in-process sliding window.
+
+slowapi (Redis-backed) was considered, but the deployment shape is a
+single API pod behind no load balancer fan-out, so a per-worker
+in-memory limiter is correct, dependency-free, and zero-latency.
+If the API is ever scaled horizontally, swap ``InMemoryRateLimiter``
+for a Redis token bucket — the middleware contract stays identical.
+
+Limits are deliberately generous for an operator dashboard (this is a
+single-user tool) while still capping brute-force and runaway-script
+damage: 60 req/min general, 10 req/min on the mutation endpoints.
+"""
+import time
+from collections import defaultdict, deque
+from typing import Any, Callable
+
+from fastapi import FastAPI, Request, Response
+from starlette.middleware.base import BaseHTTPMiddleware
+
+from app.config import settings
+
+
+class InMemoryRateLimiter:
+    """Sliding-window rate limiter keyed by client IP."""
+
+    def __init__(self, max_requests: int, window_seconds: int) -> None:
+        self.max_requests = max_requests
+        self.window_seconds = window_seconds
+        self._hits: dict[str, deque[float]] = defaultdict(deque)
+
+    def check(self, key: str, now: float | None = None) -> tuple[bool, int]:
+        """Returns (allowed, retry_after_seconds)."""
+        now = now or time.monotonic()
+        window = self._hits[key]
+        cutoff = now - self.window_seconds
+        while window and window[0] < cutoff:
+            window.popleft()
+        if len(window) >= self.max_requests:
+            retry_after = int(self.window_seconds - (now - window[0])) + 1
+            return False, max(retry_after, 1)
+        window.append(now)
+        return True, 0
+
+
+def _client_ip(request: Request) -> str:
+    """Trust X-Forwarded-For only when running behind a proxy we control."""
+    if request.client:
+        return request.client.host
+    return "unknown"
+
+
+class RateLimitMiddleware(BaseHTTPMiddleware):
+    """Applies per-path-class limits: mutations are stricter than reads."""
+
+    def __init__(self, app: Any) -> None:
+        super().__init__(app)
+        self._read_limiter = InMemoryRateLimiter(max_requests=60, window_seconds=60)
+        self._write_limiter = InMemoryRateLimiter(max_requests=10, window_seconds=60)
+
+    async def dispatch(self, request: Request, call_next: Callable) -> Response:
+        # Health probes must never be throttled.
+        if request.url.path in PUBLIC_PATHS_NO_LIMIT:
+            return await call_next(request)
+
+        ip = _client_ip(request)
+        if request.method in ("POST", "PUT", "PATCH", "DELETE"):
+            allowed, retry_after = self._write_limiter.check(ip)
+        else:
+            allowed, retry_after = self._read_limiter.check(ip)
+
+        if not allowed:
+            return Response(
+                content='{"detail": "Rate limit exceeded."}',
+                status_code=429,
+                media_type="application/json",
+                headers={"Retry-After": str(retry_after)},
+            )
+        return await call_next(request)
+
+
+# Paths exempt from rate limiting (health probes)
+PUBLIC_PATHS_NO_LIMIT: frozenset[str] = frozenset({"/api/health"})
+
+
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    """Sets defensive HTTP response headers on every response."""
+
+    async def dispatch(self, request: Request, call_next: Callable) -> Response:
+        response = await call_next(request)
+        response.headers.setdefault("X-Content-Type-Options", "nosniff")
+        response.headers.setdefault("X-Frame-Options", "DENY")
+        response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+        if settings.is_production:
+            # Backend is API-only; HSTS on the edge proxy covers plain HTTP.
+            response.headers.setdefault("Strict-Transport-Security", "max-age=63072000; includeSubDomains")
+        return response
+
+
+def register_security_middleware(app: FastAPI) -> None:
+    """Installs security headers + rate limiting (outermost first-run order)."""
+    app.add_middleware(SecurityHeadersMiddleware)
+    app.add_middleware(RateLimitMiddleware)
