@@ -21,11 +21,14 @@ depends_on: Union[str, Sequence[str], None] = None
 
 def upgrade() -> None:
     # pgvector is optional (used only if semantic search migrates to
-    # vector columns later); tolerate its absence on plain Postgres.
-    try:
+    # vector columns later). CREATE EXTENSION raises inside a migration
+    # transaction on plain Postgres and poisons it, so probe first.
+    bind = op.get_bind()
+    has_vector = bind.exec_driver_sql(
+        "SELECT 1 FROM pg_available_extensions WHERE name = 'vector'"
+    ).scalar()
+    if has_vector:
         op.execute("CREATE EXTENSION IF NOT EXISTS vector")
-    except Exception:
-        pass
 
     op.create_table(
         "batches",

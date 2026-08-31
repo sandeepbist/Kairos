@@ -76,7 +76,7 @@ async def test_temporal_process_batch_workflow_end_to_end():
         # Start Workflow
         handle = await client.start_workflow(
             ProcessBatchWorkflow.run,
-            args=[batch_id, batch.raw_text, "meeting_transcript"],
+            args=[batch_id, batch.raw_text, "meeting_transcript", True],  # sandbox_mode=True
             id=workflow_id,
             task_queue=test_queue,
         )
@@ -194,7 +194,7 @@ async def test_temporal_process_batch_all_rejections():
 
         handle = await client.start_workflow(
             ProcessBatchWorkflow.run,
-            args=[batch_id, batch.raw_text, "slack_conversation"],
+            args=[batch_id, batch.raw_text, "slack_conversation", True],  # sandbox_mode=True
             id=workflow_id,
             task_queue=test_queue,
         )

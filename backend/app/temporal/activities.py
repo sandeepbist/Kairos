@@ -78,6 +78,7 @@ async def execute_approved_item_activity(
     tool: str,
     payload: dict[str, Any],
     description: str,
+    sandbox_mode: bool | None = None,
 ) -> dict[str, Any]:
     """Executes single approved action item via McpClientManager with SHA256 deduplication."""
     result = await mcp_client_manager.execute_action(
@@ -86,6 +87,7 @@ async def execute_approved_item_activity(
         tool=tool,
         payload=payload,
         item_description=description,
+        sandbox_mode=sandbox_mode,
     )
     return {
         "status": result.status,

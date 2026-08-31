@@ -37,6 +37,7 @@ class ProcessBatchWorkflow:
         batch_id: str,
         raw_text: str,
         source_type: str = "meeting_transcript",
+        sandbox_mode: bool = False,
     ) -> dict[str, Any]:
         workflow.logger.info(f"Starting ProcessBatchWorkflow for batch {batch_id}")
 
@@ -118,10 +119,13 @@ class ProcessBatchWorkflow:
                 final_payload = decision.get("modified_payload") or original_item.get("tool_payload", {})
                 was_overridden = (final_tool != suggested_tool)
 
-                # Execute approved item with exponential backoff retry policy
+                # Execute approved item with exponential backoff retry policy.
+                # sandbox_mode is captured at ingest time and threaded through
+                # workflow args so the worker's own env/settings never diverge
+                # from what the operator approved.
                 exec_res = await workflow.execute_activity(
                     execute_approved_item_activity,
-                    args=[batch_id, item_id, final_tool, final_payload, description],
+                    args=[batch_id, item_id, final_tool, final_payload, description, sandbox_mode],
                     start_to_close_timeout=timedelta(seconds=30),
                     retry_policy=RetryPolicy(
                         initial_interval=timedelta(seconds=1),

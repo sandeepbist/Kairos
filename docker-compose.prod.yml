@@ -26,16 +26,32 @@ services:
 
   temporal:
     image: temporalio/temporal:1.8.2
+    # dev-mode server persists to SQLite in /data; the image runs as the
+    # non-root 'temporal' user, so the volume must be chowned first.
     command: ["server", "start-dev", "--ip", "0.0.0.0", "--port", "7234", "--db-filename", "/data/temporal.db"]
     volumes:
       - temporaldata:/data
     networks: [internal]
     restart: unless-stopped
+    depends_on:
+      temporal-volume-init:
+        condition: service_completed_successfully
     healthcheck:
       test: ["CMD", "nc", "-z", "localhost", "7234"]
       interval: 10s
       timeout: 5s
       retries: 5
+
+  temporal-volume-init:
+    image: temporalio/temporal:1.8.2
+    # Image defaults to USER temporal; chown needs root for first-run
+    # volume ownership, then the server runs unprivileged.
+    user: "0:0"
+    entrypoint: ["/bin/sh", "-c", "chown -R temporal:temporal /data"]
+    volumes:
+      - temporaldata:/data
+    networks: [internal]
+    restart: "no"
 
   migrate:
     build:

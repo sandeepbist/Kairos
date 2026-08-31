@@ -123,9 +123,17 @@ async def delete_oauth_token(
 async def toggle_sandbox_mode(
     request: SandboxToggleRequest,
 ):
-    """Toggles Sandbox / Mock Mode dynamically for live demos."""
+    """Toggles Sandbox / Mock Mode for subsequently ingested batches.
+
+    The mode is captured per batch at ingest time and carried through the
+    workflow to execution, so it applies even though the Temporal worker
+    runs as a separate process.
+    """
     settings.SANDBOX_MODE = request.sandbox_mode
     return {
         "sandbox_mode": settings.SANDBOX_MODE,
-        "message": f"Sandbox mode set to {settings.SANDBOX_MODE}",
+        "message": (
+            "Sandbox mode set to "
+            f"{settings.SANDBOX_MODE} — applies to newly ingested batches."
+        ),
     }

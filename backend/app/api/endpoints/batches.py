@@ -45,7 +45,7 @@ async def ingest_batch(
         client = await get_temporal_client()
         await client.start_workflow(
             ProcessBatchWorkflow.run,
-            args=[batch_id, request.raw_text, request.source_type],
+            args=[batch_id, request.raw_text, request.source_type, settings.SANDBOX_MODE],
             id=workflow_id,
             task_queue=settings.TEMPORAL_TASK_QUEUE,
         )
