@@ -121,6 +121,11 @@ class RoutingFeedbackModel(Base):
     suggested_tool = Column(String(50), nullable=False)
     final_tool = Column(String(50), nullable=False)
     was_overridden = Column(Boolean, nullable=False, default=False)
+    # Embedding of item_description for semantic neighbor matching.
+    # JSONB float array rather than a pgvector column: embedding dimension
+    # varies by provider (Gemini 768 / OpenAI 1536) and in-process cosine
+    # over the recent window is sub-5ms at operator scale.
+    embedding = Column(JSON, nullable=True)
     created_at = Column(DateTime(timezone=True), default=utc_now, nullable=False)
 
 

@@ -17,7 +17,7 @@ if ! (echo > /dev/tcp/127.0.0.1/5435) 2>/dev/null; then
     docker compose up -d
   fi
   echo "⏳ Waiting for database and Temporal to be ready..."
-  for i in {1..20}; do
+  for i in {1..30}; do
     if (echo > /dev/tcp/127.0.0.1/5435) 2>/dev/null && ((echo > /dev/tcp/127.0.0.1/7234) 2>/dev/null || nc -z localhost 7234 2>/dev/null); then
       break
     fi
@@ -26,8 +26,15 @@ if ! (echo > /dev/tcp/127.0.0.1/5435) 2>/dev/null; then
   echo "✓ Infrastructure ready."
 fi
 
-source "$ROOT_DIR/.venv/bin/activate"
+# Activate Python environment
+if [ -f "$ROOT_DIR/.venv/bin/activate" ]; then
+  source "$ROOT_DIR/.venv/bin/activate"
+fi
 export PYTHONPATH="$ROOT_DIR/backend"
 export APP_ENV=test
+
+echo "🗄️  Applying database migrations..."
+(cd "$ROOT_DIR/backend" && python -m alembic upgrade head)
+echo "✓ Schema at head."
 
 pytest "$ROOT_DIR/backend/tests/" -v --tb=short

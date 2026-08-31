@@ -30,6 +30,13 @@ echo "✓ Docker infrastructure is live and healthy."
 source "$ROOT_DIR/.venv/bin/activate"
 export PYTHONPATH="$ROOT_DIR/backend"
 
+# 2a. Apply database migrations (schema is owned by Alembic)
+echo "🗄️  Applying database migrations..."
+(cd "$ROOT_DIR/backend" && python -m alembic upgrade head) || {
+  echo "❌ Migrations failed. Check POSTGRES_* settings and that Postgres is reachable on port 5435."
+  exit 1
+}
+
 # 3. Start Temporal Worker in background
 echo "⚡ [2/4] Starting Temporal Durable Worker..."
 python -m app.temporal.worker &

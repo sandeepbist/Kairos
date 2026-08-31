@@ -9,21 +9,22 @@ asyncpg>=0.30.0
 sqlalchemy[asyncio]>=2.0.36
 cryptography>=44.0.0
 
-# AI, Agentic & Memory
+# AI, Agentic & Memory (semantic routing memory is implemented natively)
 langgraph>=0.2.60
 langchain>=0.3.14
 langchain-core>=0.3.29
 langchain-google-genai>=2.0.8
 langchain-openai>=0.3.0
-langchain-anthropic>=0.3.0
-mem0ai>=0.1.30
 google-genai>=1.0.0
 
 # Model Context Protocol (MCP)
-mcp>=1.2.0
+mcp>=2.1.0
 
 # Durable Execution
 temporalio>=1.8.0
+
+# Migrations
+alembic>=1.19.0
 
 # Observability
 langfuse>=2.57.0

@@ -1,25 +1,46 @@
 """Pytest configuration and session fixtures for Kairos test suite."""
-import pytest
 import asyncio
+import os
+import subprocess
+import sys
+
+import pytest
 from sqlalchemy import text
-from app.db.session import engine, init_db
+
+from app.db.session import engine
+
+_BACKEND_DIR = os.path.join(os.path.dirname(__file__), "..")
 
 
 @pytest.fixture(scope="session", autouse=True)
 def setup_and_teardown_test_db():
-    """Initializes schema before test session and cleanly purges all test data on finish."""
-    async def _init():
-        await init_db()
+    """Applies migrations once per session, purges test data on finish."""
 
-    async def _cleanup():
-        async with engine.begin() as conn:
-            await conn.execute(text("TRUNCATE TABLE execution_logs CASCADE;"))
-            await conn.execute(text("TRUNCATE TABLE action_items CASCADE;"))
-            await conn.execute(text("TRUNCATE TABLE batches CASCADE;"))
-            await conn.execute(text("TRUNCATE TABLE oauth_tokens CASCADE;"))
-            await conn.execute(text("TRUNCATE TABLE routing_feedback CASCADE;"))
-            await conn.execute(text("TRUNCATE TABLE task_ledger_tasks CASCADE;"))
+    def _migrate_to_head():
+        # Alembic's env.py calls asyncio.run internally, which cannot nest
+        # inside pytest's running loop — run it as a subprocess.
+        subprocess.run(
+            [sys.executable, "-m", "alembic", "upgrade", "head"],
+            check=True,
+            cwd=_BACKEND_DIR,
+            env={**os.environ, "PYTHONPATH": _BACKEND_DIR},
+        )
 
-    asyncio.run(_init())
+    def _cleanup_tables():
+        async def _purge():
+            async with engine.begin() as conn:
+                for table in (
+                    "execution_logs",
+                    "action_items",
+                    "batches",
+                    "oauth_tokens",
+                    "routing_feedback",
+                    "task_ledger_tasks",
+                ):
+                    await conn.execute(text(f"TRUNCATE TABLE {table} CASCADE"))
+
+        asyncio.run(_purge())
+
+    _migrate_to_head()
     yield
-    asyncio.run(_cleanup())
+    _cleanup_tables()

@@ -5,7 +5,7 @@ from sqlalchemy import select
 from app.db.session import init_db, async_session_factory
 from app.db.models import BatchModel, ActionItemModel, ExecutionLogModel, TaskLedgerModel
 from app.mcp.servers.task_ledger import (
-    task_ledger_server,
+    server as task_ledger_server,
     create_task,
     list_tasks,
     complete_task,
@@ -54,6 +54,40 @@ async def test_task_ledger_mcp_server_tools():
     # 5. Delete task
     deleted = await delete_task(task_id)
     assert deleted["status"] == "deleted"
+
+
+# ---------------------------------------------------------
+# Test 1b: MCP protocol dispatch (server.call_tool path)
+# ---------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_task_ledger_mcp_server_call_tool_dispatch():
+    """Tools must be invocable through the MCP server tool layer, not just as functions."""
+    # 1. Discover tools the way an MCP client would
+    tools = await task_ledger_server.list_tools()
+    tool_names = {t.name for t in tools}
+    assert tool_names == {"create_task", "list_tasks", "complete_task", "delete_task"}
+
+    # 2. Dispatch create through the MCP protocol layer
+    result = await task_ledger_server.call_tool(
+        "create_task",
+        {"title": "MCP protocol dispatch test", "priority": "high"},
+    )
+    structured = getattr(result, "structured_content", None) or {}
+    content_text = getattr(result, "content", [{}])[0]
+    import json
+    payload = structured or json.loads(getattr(content_text, "text", "{}"))
+    assert payload["status"] == "open"
+    assert payload["title"] == "MCP protocol dispatch test"
+    assert "task_ledger://tasks/" in payload["external_url"]
+    task_id = payload["id"]
+
+    # 3. Unknown tool must be rejected by the dispatch layer
+    with pytest.raises(Exception):
+        await task_ledger_server.call_tool("nonexistent_tool", {})
+
+    # 4. Clean up
+    await delete_task(task_id)
 
 
 # ---------------------------------------------------------
