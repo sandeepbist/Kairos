@@ -22,7 +22,7 @@ export function ActionCard({
   const [selectedTool, setSelectedTool] = useState<TargetTool>(
     decision?.override_tool || item.suggested_tool
   );
-  const [modifiedPayload, setModifiedPayload] = useState<Record<string, any>>(
+  const [modifiedPayload, setModifiedPayload] = useState<Record<string, unknown>>(
     decision?.modified_payload || item.tool_payload || {}
   );
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -56,7 +56,7 @@ export function ActionCard({
     });
   };
 
-  const handleSavePayload = (newPayload: Record<string, any>) => {
+  const handleSavePayload = (newPayload: Record<string, unknown>) => {
     setModifiedPayload(newPayload);
     onDecisionChange({
       item_id: item.id,

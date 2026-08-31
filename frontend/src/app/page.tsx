@@ -3,6 +3,7 @@
 import React, { useState } from "react";
 import { useRouter } from "next/navigation";
 import { ingestBatch } from "@/lib/api";
+import { errorMessage } from "@/lib/errors";
 import { SourceType } from "@/lib/types";
 
 const SAMPLE_PRESETS = {
@@ -70,8 +71,10 @@ export default function IngestPage() {
     try {
       const response = await ingestBatch(rawText, sourceType);
       router.push(`/review/${response.batch_id}`);
-    } catch (err: any) {
-      setError(err.message || "Failed to submit batch. Verify backend is running on localhost:8000.");
+    } catch (err) {
+      setError(
+        errorMessage(err, "Failed to submit batch. Verify the backend is reachable.")
+      );
       setLoading(false);
     }
   };

@@ -1,6 +1,10 @@
 import React from "react";
 import Link from "next/link";
 
+// Public docs URL: exposed intentionally (dev convenience); empty in prod.
+const API_DOCS_URL = process.env.NEXT_PUBLIC_API_DOCS_URL || "";
+const TEMPORAL_UI_URL = process.env.NEXT_PUBLIC_TEMPORAL_UI_URL || "http://localhost:8234";
+
 export function Footer() {
   return (
     <footer
@@ -57,22 +61,26 @@ export function Footer() {
           >
             Privacy Policy
           </Link>
-          <a
-            href="http://localhost:8000/docs"
-            target="_blank"
-            rel="noreferrer"
-            style={{ color: "var(--text-secondary)", textDecoration: "none" }}
-          >
-            API Docs
-          </a>
-          <a
-            href="http://localhost:8234"
-            target="_blank"
-            rel="noreferrer"
-            style={{ color: "var(--text-secondary)", textDecoration: "none" }}
-          >
-            Temporal UI
-          </a>
+          {API_DOCS_URL ? (
+            <a
+              href={API_DOCS_URL}
+              target="_blank"
+              rel="noreferrer"
+              style={{ color: "var(--text-secondary)", textDecoration: "none" }}
+            >
+              API Docs
+            </a>
+          ) : null}
+          {TEMPORAL_UI_URL ? (
+            <a
+              href={TEMPORAL_UI_URL}
+              target="_blank"
+              rel="noreferrer"
+              style={{ color: "var(--text-secondary)", textDecoration: "none" }}
+            >
+              Temporal UI
+            </a>
+          ) : null}
         </div>
       </div>
     </footer>

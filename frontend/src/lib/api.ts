@@ -6,87 +6,84 @@ import {
   ConnectorsStatusResponse,
 } from "./types";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api";
+/**
+ * All calls target the same-origin Next.js proxy (`/api/*`), which
+ * forwards to the FastAPI backend and injects the operator API key
+ * server-side (see src/proxy.ts). The key never ships to the browser.
+ */
+
+export class ApiError extends Error {
+  status: number;
+
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+  }
+}
+
+async function parseError(res: Response, fallback: string): Promise<string> {
+  try {
+    const body = (await res.json()) as { detail?: string | { msg?: string } };
+    if (typeof body.detail === "string") return body.detail;
+    if (body.detail?.msg) return body.detail.msg;
+  } catch {
+    // non-JSON error body
+  }
+  return fallback;
+}
+
+async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const res = await fetch(path, {
+    ...init,
+    headers: { "Content-Type": "application/json", ...init?.headers },
+  });
+  if (!res.ok) {
+    const message = await parseError(res, `Request failed (${res.status})`);
+    throw new ApiError(message, res.status);
+  }
+  return (await res.json()) as T;
+}
 
 export async function ingestBatch(
   raw_text: string,
   source_type: SourceType = "meeting_transcript"
 ): Promise<{ batch_id: string; status: string }> {
-  const res = await fetch(`${API_BASE}/batches/ingest`, {
+  return request("/api/batches/ingest", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ raw_text, source_type }),
   });
-  if (!res.ok) {
-    const error = await res.json().catch(() => ({ detail: "Ingest failed" }));
-    throw new Error(error.detail || `Ingest failed with status ${res.status}`);
-  }
-  return res.json();
 }
 
 export async function getBatch(batchId: string): Promise<BatchResponse> {
-  const res = await fetch(`${API_BASE}/batches/${batchId}`, {
-    method: "GET",
-    headers: { "Content-Type": "application/json" },
-    cache: "no-store",
-  });
-  if (!res.ok) {
-    const error = await res.json().catch(() => ({ detail: "Failed to fetch batch" }));
-    throw new Error(error.detail || `Fetch batch failed with status ${res.status}`);
-  }
-  return res.json();
+  return request(`/api/batches/${batchId}`, { cache: "no-store" });
 }
 
 export async function approveBatch(
   batchId: string,
   decisions: ActionItemDecision[]
 ): Promise<{ batch_id: string; status: string }> {
-  const res = await fetch(`${API_BASE}/batches/${batchId}/approve`, {
+  return request(`/api/batches/${batchId}/approve`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ batch_id: batchId, decisions }),
   });
-  if (!res.ok) {
-    const error = await res.json().catch(() => ({ detail: "Approval submission failed" }));
-    throw new Error(error.detail || `Approval failed with status ${res.status}`);
-  }
-  return res.json();
 }
 
 export async function getHistory(): Promise<HistoryBatch[]> {
-  const res = await fetch(`${API_BASE}/history`, {
-    method: "GET",
-    headers: { "Content-Type": "application/json" },
-    cache: "no-store",
-  });
-  if (!res.ok) {
-    throw new Error(`Failed to fetch history (${res.status})`);
-  }
-  return res.json();
+  return request("/api/history", { cache: "no-store" });
 }
 
 export async function getConnectorsStatus(): Promise<ConnectorsStatusResponse> {
-  const res = await fetch(`${API_BASE}/connectors/status`, {
-    method: "GET",
-    headers: { "Content-Type": "application/json" },
-    cache: "no-store",
-  });
-  if (!res.ok) {
-    throw new Error(`Failed to fetch connectors status (${res.status})`);
-  }
-  return res.json();
+  return request("/api/connectors/status", { cache: "no-store" });
 }
 
-export async function toggleSandbox(sandbox_mode: boolean): Promise<any> {
-  const res = await fetch(`${API_BASE}/connectors/sandbox-toggle`, {
+export async function toggleSandbox(
+  sandbox_mode: boolean
+): Promise<ConnectorsStatusResponse> {
+  return request("/api/connectors/sandbox-toggle", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ sandbox_mode }),
   });
-  if (!res.ok) {
-    throw new Error("Failed to toggle sandbox mode");
-  }
-  return res.json();
 }
 
 export async function saveOAuthToken(
@@ -95,9 +92,8 @@ export async function saveOAuthToken(
   refreshToken?: string,
   scopes?: string
 ): Promise<{ status: string; provider: string }> {
-  const res = await fetch(`${API_BASE}/connectors/oauth/save`, {
+  return request("/api/connectors/oauth/save", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       provider,
       access_token: accessToken,
@@ -105,22 +101,10 @@ export async function saveOAuthToken(
       scopes,
     }),
   });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({ detail: "Failed to save token" }));
-    throw new Error(err.detail || "Failed to save OAuth credentials");
-  }
-  return res.json();
 }
 
-export async function deleteOAuthToken(provider: string): Promise<{ status: string; provider: string }> {
-  const res = await fetch(`${API_BASE}/connectors/oauth/${provider}`, {
-    method: "DELETE",
-    headers: { "Content-Type": "application/json" },
-  });
-  if (!res.ok) {
-    throw new Error(`Failed to delete OAuth token for ${provider}`);
-  }
-  return res.json();
+export async function deleteOAuthToken(
+  provider: string
+): Promise<{ status: string; provider: string }> {
+  return request(`/api/connectors/oauth/${provider}`, { method: "DELETE" });
 }
-
-

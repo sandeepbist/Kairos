@@ -3,6 +3,7 @@
 import React, { useEffect, useState, use } from "react";
 import { useRouter } from "next/navigation";
 import { getBatch, approveBatch } from "@/lib/api";
+import { errorMessage } from "@/lib/errors";
 import { BatchResponse, ActionItemDecision } from "@/lib/types";
 import { ActionCard } from "@/components/ActionCard";
 import { SourceSnippetViewer } from "@/components/SourceSnippetViewer";
@@ -25,7 +26,6 @@ export default function ReviewPage({
 
   // Poll batch status until awaiting_approval
   useEffect(() => {
-    let interval: NodeJS.Timeout;
     const fetchStatus = async () => {
       try {
         const data = await getBatch(batchId);
@@ -48,14 +48,14 @@ export default function ReviewPage({
             return prev;
           });
         }
-      } catch (err: any) {
-        setError(err.message || "Failed to load batch review");
+      } catch (err) {
+        setError(errorMessage(err, "Failed to load batch review"));
         setLoading(false);
       }
     };
 
     fetchStatus();
-    interval = setInterval(() => {
+    const interval: ReturnType<typeof setInterval> = setInterval(() => {
       setBatch((curr) => {
         if (!curr || curr.status === "processing" || curr.status === "executing") {
           fetchStatus();
@@ -124,8 +124,8 @@ export default function ReviewPage({
     try {
       await approveBatch(batchId, decisionsList);
       router.push("/history");
-    } catch (err: any) {
-      setError(err.message || "Failed to submit approvals");
+    } catch (err) {
+      setError(errorMessage(err, "Failed to submit approvals"));
       setSubmitting(false);
     }
   };

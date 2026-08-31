@@ -8,7 +8,7 @@ interface PayloadModalProps {
   targetTool: TargetTool;
   isOpen: boolean;
   onClose: () => void;
-  onSave: (modifiedPayload: Record<string, any>) => void;
+  onSave: (modifiedPayload: Record<string, unknown>) => void;
 }
 
 export function PayloadModal({
@@ -18,7 +18,7 @@ export function PayloadModal({
   onClose,
   onSave,
 }: PayloadModalProps) {
-  const [payload, setPayload] = useState<Record<string, any>>({ ...item.tool_payload });
+  const [payload, setPayload] = useState<Record<string, unknown>>({ ...item.tool_payload });
 
   React.useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -32,8 +32,14 @@ export function PayloadModal({
 
   if (!isOpen) return null;
 
-  const handleChange = (field: string, value: any) => {
+  const handleChange = (field: string, value: unknown) => {
     setPayload((prev) => ({ ...prev, [field]: value }));
+  };
+
+  /** Coerces a possibly-unknown payload value into an input-friendly string. */
+  const str = (field: string, fallback = ""): string => {
+    const v = payload[field];
+    return typeof v === "string" ? v : v == null ? fallback : String(v);
   };
 
   const handleSave = () => {
@@ -100,7 +106,7 @@ export function PayloadModal({
                 <label style={labelStyle}>Project Key</label>
                 <input
                   type="text"
-                  value={payload.project_key || "ENG"}
+                  value={str("project_key", "ENG")}
                   onChange={(e) => handleChange("project_key", e.target.value)}
                   style={inputStyle}
                 />
@@ -108,7 +114,7 @@ export function PayloadModal({
               <div>
                 <label style={labelStyle}>Issue Type</label>
                 <select
-                  value={payload.issue_type || "Task"}
+                  value={str("issue_type", "Task")}
                   onChange={(e) => handleChange("issue_type", e.target.value)}
                   style={inputStyle}
                 >
@@ -121,7 +127,7 @@ export function PayloadModal({
                 <label style={labelStyle}>Summary / Title</label>
                 <input
                   type="text"
-                  value={payload.summary || ""}
+                  value={str("summary")}
                   onChange={(e) => handleChange("summary", e.target.value)}
                   style={inputStyle}
                 />
@@ -129,7 +135,7 @@ export function PayloadModal({
               <div>
                 <label style={labelStyle}>Priority</label>
                 <select
-                  value={payload.priority || "Medium"}
+                  value={str("priority", "Medium")}
                   onChange={(e) => handleChange("priority", e.target.value)}
                   style={inputStyle}
                 >
@@ -149,7 +155,7 @@ export function PayloadModal({
                 <label style={labelStyle}>Event Title</label>
                 <input
                   type="text"
-                  value={payload.title || ""}
+                  value={str("title")}
                   onChange={(e) => handleChange("title", e.target.value)}
                   style={inputStyle}
                 />
@@ -158,7 +164,7 @@ export function PayloadModal({
                 <label style={labelStyle}>Start Time (ISO)</label>
                 <input
                   type="text"
-                  value={payload.start_time || ""}
+                  value={str("start_time")}
                   onChange={(e) => handleChange("start_time", e.target.value)}
                   style={inputStyle}
                 />
@@ -167,7 +173,7 @@ export function PayloadModal({
                 <label style={labelStyle}>End Time (ISO)</label>
                 <input
                   type="text"
-                  value={payload.end_time || ""}
+                  value={str("end_time")}
                   onChange={(e) => handleChange("end_time", e.target.value)}
                   style={inputStyle}
                 />
@@ -176,7 +182,7 @@ export function PayloadModal({
                 <label style={labelStyle}>Attendee Email</label>
                 <input
                   type="text"
-                  value={payload.attendees?.[0] || ""}
+                  value={Array.isArray(payload.attendees) ? String(payload.attendees[0] ?? "") : ""}
                   onChange={(e) => handleChange("attendees", e.target.value ? [e.target.value] : [])}
                   placeholder="name@company.com"
                   style={inputStyle}
@@ -192,7 +198,7 @@ export function PayloadModal({
                 <label style={labelStyle}>Target Database ID</label>
                 <input
                   type="text"
-                  value={payload.database_id || "roadmap_db"}
+                  value={str("database_id", "roadmap_db")}
                   onChange={(e) => handleChange("database_id", e.target.value)}
                   style={inputStyle}
                 />
@@ -201,7 +207,7 @@ export function PayloadModal({
                 <label style={labelStyle}>Page Title</label>
                 <input
                   type="text"
-                  value={payload.title || ""}
+                  value={str("title")}
                   onChange={(e) => handleChange("title", e.target.value)}
                   style={inputStyle}
                 />
@@ -209,7 +215,7 @@ export function PayloadModal({
               <div>
                 <label style={labelStyle}>Details / Context</label>
                 <textarea
-                  value={payload.details || payload.description || ""}
+                  value={str("details") || str("description")}
                   onChange={(e) => handleChange("details", e.target.value)}
                   rows={3}
                   style={inputStyle}
@@ -225,7 +231,7 @@ export function PayloadModal({
                 <label style={labelStyle}>Task Title</label>
                 <input
                   type="text"
-                  value={payload.title || ""}
+                  value={str("title")}
                   onChange={(e) => handleChange("title", e.target.value)}
                   style={inputStyle}
                 />
@@ -233,7 +239,7 @@ export function PayloadModal({
               <div>
                 <label style={labelStyle}>Notes</label>
                 <textarea
-                  value={payload.notes || ""}
+                  value={str("notes")}
                   onChange={(e) => handleChange("notes", e.target.value)}
                   rows={3}
                   style={inputStyle}
@@ -242,7 +248,7 @@ export function PayloadModal({
               <div>
                 <label style={labelStyle}>Priority</label>
                 <select
-                  value={payload.priority || "medium"}
+                  value={str("priority", "medium")}
                   onChange={(e) => handleChange("priority", e.target.value)}
                   style={inputStyle}
                 >

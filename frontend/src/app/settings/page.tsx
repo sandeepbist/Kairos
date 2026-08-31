@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from "react";
 import { getConnectorsStatus, toggleSandbox, saveOAuthToken, deleteOAuthToken } from "@/lib/api";
+import { errorMessage } from "@/lib/errors";
 import { ConnectorsStatusResponse } from "@/lib/types";
 
 export default function SettingsPage() {
@@ -43,7 +44,7 @@ export default function SettingsPage() {
         type: "info",
       });
       loadStatus();
-    } catch (err: any) {
+    } catch {
       setMessage({ text: "Failed to update sandbox mode", type: "error" });
     } finally {
       setSaving(false);
@@ -69,8 +70,8 @@ export default function SettingsPage() {
       if (provider === "notion") setNotionToken("");
       if (provider === "google_calendar") setCalendarToken("");
       loadStatus();
-    } catch (err: any) {
-      setMessage({ text: err.message || `Failed to save ${provider} token`, type: "error" });
+    } catch (err) {
+      setMessage({ text: errorMessage(err, `Failed to save ${provider} token`), type: "error" });
     } finally {
       setSavingProvider(null);
     }
@@ -86,8 +87,8 @@ export default function SettingsPage() {
         type: "info",
       });
       loadStatus();
-    } catch (err: any) {
-      setMessage({ text: err.message || `Failed to disconnect ${provider}`, type: "error" });
+    } catch (err) {
+      setMessage({ text: errorMessage(err, `Failed to disconnect ${provider}`), type: "error" });
     } finally {
       setSavingProvider(null);
     }

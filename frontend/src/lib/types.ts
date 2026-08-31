@@ -11,7 +11,7 @@ export interface ActionItem {
   description: string;
   suggested_tool: TargetTool;
   final_tool?: TargetTool;
-  tool_payload: Record<string, any>;
+  tool_payload: Record<string, unknown>;
   source_snippet: string;
   speaker?: string;
   suggested_assignee?: string;
@@ -41,7 +41,7 @@ export interface ActionItemDecision {
   item_id: string;
   action: "APPROVE" | "MODIFY_AND_APPROVE" | "REJECT";
   override_tool?: TargetTool;
-  modified_payload?: Record<string, any>;
+  modified_payload?: Record<string, unknown>;
   rejection_reason?: string;
 }
 

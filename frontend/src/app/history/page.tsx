@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import { getHistory } from "@/lib/api";
+import { errorMessage } from "@/lib/errors";
 import { HistoryBatch } from "@/lib/types";
 
 export default function HistoryPage() {
@@ -14,17 +15,20 @@ export default function HistoryPage() {
     try {
       const data = await getHistory();
       setHistory(data);
-    } catch (err: any) {
-      setError(err.message || "Failed to fetch history");
+    } catch (err) {
+      setError(errorMessage(err, "Failed to fetch history"));
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchHistoryData();
+    const initialFetch = setTimeout(fetchHistoryData, 0);
     const interval = setInterval(fetchHistoryData, 4000);
-    return () => clearInterval(interval);
+    return () => {
+      clearTimeout(initialFetch);
+      clearInterval(interval);
+    };
   }, []);
 
   const getStatusPill = (status: string) => {
