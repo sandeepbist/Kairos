@@ -30,6 +30,14 @@ env/
 .env.*.local
 *.env
 
+# Agent working dirs
+scratch/
+.claude/
+.codex/
+.zcode/
+CLAUDE.md
+AGENTS.md
+
 # Testing & Coverage
 .coverage
 .coverage.*
