@@ -7,7 +7,6 @@ timing side channels, and absent from logs and error responses.
 import hashlib
 import hmac
 import logging
-from typing import Any
 
 from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import APIKeyHeader, APIKeyQuery

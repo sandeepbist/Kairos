@@ -1,14 +1,7 @@
 from datetime import datetime, date, timezone
-from typing import Literal, Any, Union
+from typing import Literal, Any
 import uuid
 from pydantic import BaseModel, Field
-from .payloads import (
-    JiraPayload,
-    CalendarPayload,
-    NotionPayload,
-    TaskLedgerPayload,
-    ToolPayloadUnion,
-)
 
 SourceType = Literal["meeting_transcript", "email_thread", "slack_conversation", "general_notes"]
 TargetTool = Literal["notion", "jira", "calendar", "task_ledger"]

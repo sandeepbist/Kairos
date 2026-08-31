@@ -3,7 +3,7 @@ import pytest
 import uuid
 from sqlalchemy import select
 from app.db.session import init_db, async_session_factory
-from app.db.models import BatchModel, ActionItemModel, ExecutionLogModel, TaskLedgerModel
+from app.db.models import BatchModel, ActionItemModel, ExecutionLogModel
 from app.mcp.servers.task_ledger import (
     server as task_ledger_server,
     create_task,
@@ -11,7 +11,7 @@ from app.mcp.servers.task_ledger import (
     complete_task,
     delete_task,
 )
-from app.mcp.client_manager import McpClientManager, mcp_client_manager
+from app.mcp.client_manager import mcp_client_manager
 
 
 @pytest.fixture(autouse=True)

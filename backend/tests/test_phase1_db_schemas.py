@@ -1,17 +1,14 @@
 """Phase 1 Battle Test Suite: Pydantic Schemas & Database Models."""
 import pytest
 import uuid
-from datetime import datetime, date
+from datetime import date
 from sqlalchemy import select
-from app.config import settings
-from app.db.session import init_db, async_session_factory, engine
+from app.db.session import init_db, async_session_factory
 from app.db.models import (
     BatchModel,
     ActionItemModel,
     ExecutionLogModel,
-    RoutingFeedbackModel,
     TaskLedgerModel,
-    OAuthTokenModel,
 )
 from app.schemas.payloads import (
     JiraPayload,
@@ -19,11 +16,7 @@ from app.schemas.payloads import (
     NotionPayload,
     TaskLedgerPayload,
 )
-from app.schemas.action_item import (
-    ActionItemDraft,
-    ActionItemDecision,
-    BatchIngestRequest,
-)
+from app.schemas.action_item import ActionItemDraft
 from pydantic import ValidationError
 
 

@@ -1,6 +1,5 @@
 """Configuration and environment settings for Kairos backend."""
 import logging
-import secrets
 from functools import lru_cache
 from typing import Literal
 
@@ -137,7 +136,7 @@ def get_settings() -> Settings:
     """Cached settings accessor; validates once at first use."""
     try:
         return Settings()
-    except Exception as e:
+    except Exception:
         # dev/test: auto-provision a fresh key so the app still boots, then warn
         import os
 

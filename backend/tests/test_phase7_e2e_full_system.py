@@ -1,15 +1,12 @@
 """Phase 7 E2E Battle Test Suite: Complete Full-Stack Integration Verification."""
 import pytest
-import uuid
 import asyncio
 from httpx import AsyncClient, ASGITransport
 from sqlalchemy import select
 from app.main import app
-from app.config import settings
 from app.db.session import init_db, async_session_factory
-from app.db.models import BatchModel, ActionItemModel, ExecutionLogModel, RoutingFeedbackModel, TaskLedgerModel
+from app.db.models import ExecutionLogModel
 from app.temporal.worker import create_worker, get_temporal_client
-from app.temporal.workflows import ProcessBatchWorkflow
 
 
 @pytest.fixture(autouse=True)

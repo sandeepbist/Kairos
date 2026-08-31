@@ -6,9 +6,8 @@ from httpx import AsyncClient, ASGITransport
 from sqlalchemy import select
 from app.main import app
 from app.db.session import init_db, async_session_factory
-from app.db.models import BatchModel, ActionItemModel, OAuthTokenModel
+from app.db.models import OAuthTokenModel
 from app.core.security import encrypt_token, decrypt_token
-from app.temporal.workflows import ProcessBatchWorkflow
 from app.temporal.worker import create_worker, get_temporal_client
 
 

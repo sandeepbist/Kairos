@@ -135,8 +135,6 @@ task_ledger_server = server
 
 async def run_stdio() -> None:
     """Entry point for running the server as an external MCP stdio process."""
-    import asyncio
-
     from mcp.server.stdio import stdio_server
 
     async with stdio_server() as (read_stream, write_stream):

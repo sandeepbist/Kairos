@@ -2,10 +2,8 @@
 import time
 import os
 import uuid
-import httpx
 from typing import Any
 from sqlalchemy import select
-from app.config import settings
 from app.db.session import async_session_factory
 from app.db.models import OAuthTokenModel
 from app.core.security import decrypt_token
@@ -85,7 +83,7 @@ class CalendarConnector(BaseConnector):
 
         cal_body = {
             "summary": title,
-            "description": f"Scheduled by Kairos Ambient Action Agent",
+            "description": "Scheduled by Kairos Ambient Action Agent",
             "start": {"dateTime": start_time_iso},
             "end": {"dateTime": end_time_iso},
             "attendees": [{"email": str(a)} for a in attendees if a],

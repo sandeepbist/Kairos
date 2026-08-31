@@ -2,7 +2,7 @@
 import pytest
 import uuid
 import asyncio
-from datetime import datetime, timezone
+
 from sqlalchemy import select
 from temporalio.client import Client
 from temporalio.worker import Worker

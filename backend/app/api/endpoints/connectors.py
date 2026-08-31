@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import settings
 from app.db.session import get_db
 from app.db.models import OAuthTokenModel
-from app.core.security import encrypt_token, decrypt_token
+from app.core.security import encrypt_token
 from app.mcp.client_manager import mcp_client_manager
 
 router = APIRouter(prefix="/connectors", tags=["connectors"])

@@ -75,9 +75,7 @@ def test_rate_limit_write_burst(monkeypatch):
             codes.append(res.status_code)
         assert 429 in codes
         assert codes.count(429) >= 1
-        # The 429 response must tell the client when to retry
-        idx = codes.index(429)
-        # (we no longer have the response object; just verify policy below)
+        # Retry-After policy is verified directly on the limiter below.
     from app.core.ratelimit import InMemoryRateLimiter
 
     limiter = InMemoryRateLimiter(max_requests=2, window_seconds=60)

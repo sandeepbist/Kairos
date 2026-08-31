@@ -1,6 +1,5 @@
 """State definition for LangGraph extraction pipeline."""
 from typing import TypedDict, Any
-from app.schemas.action_item import ActionItemDraft
 
 
 class AgentState(TypedDict):

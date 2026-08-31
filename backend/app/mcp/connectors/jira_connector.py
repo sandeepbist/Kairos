@@ -2,10 +2,8 @@
 import time
 import os
 import random
-import httpx
 from typing import Any
 from sqlalchemy import select
-from app.config import settings
 from app.db.session import async_session_factory
 from app.db.models import OAuthTokenModel
 from app.core.security import decrypt_token
