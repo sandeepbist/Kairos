@@ -110,9 +110,6 @@ class Settings(BaseSettings):
     MAX_INPUT_TOKENS: int = 3000
     MAX_INPUT_CHARS: int = 15000
 
-    # Mem0 Memory
-    MEM0_ENABLED: bool = True
-
     # Langfuse Observability
     LANGFUSE_PUBLIC_KEY: str | None = None
     LANGFUSE_SECRET_KEY: str | None = None

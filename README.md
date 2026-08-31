@@ -162,12 +162,43 @@ docker-compose.prod.yml  production stack
 ## Security notes
 
 - OAuth/API credentials are AES-256 (Fernet) encrypted at rest; decryption
-  happens in memory at execution time only.
+  happens in memory at execution time only, and credential-shaped strings
+  are redacted from error text before it can reach logs.
 - All pasted text is treated as untrusted data: length-guarded, wrapped
   in explicit XML delimiters, and nothing executes without human approval.
 - Per-IP rate limits: 60 reads/min, 10 writes/min; health probes exempt.
 - Strict CORS (exact origins), security headers (nosniff, DENY, HSTS in
   production), JSON logs, no stack traces in responses.
+- `DELETE /api/history/batches/{id}` erases a batch and its dependent
+  records (operator erasure rights).
+
+## Deployment scope — read before going live
+
+Kairos is a **single-operator** system. This is a design boundary, not a
+ limitation to fix later; verify it matches your intended usage:
+
+- **One operator account.** Authentication is one shared API key
+  (`API_KEY`), injected server-side by the frontend proxy. There are no
+  user accounts, sessions, or per-user permissions.
+- **One credential set per tool.** The OAuth vault stores *one* Notion,
+  Jira, and Calendar connection (unique per provider), *one* Gemini/
+  OpenAI key. If you deploy this for multiple people, they all share the
+  same connected accounts, the same batches, and the same execution
+  history — everyone who can reach the dashboard sees everything.
+- **No per-user routing memory.** The semantic routing memory learns one
+  operator's preferences; with several users it would blend them.
+
+If you need true multi-user operation (each person connecting their own
+Notion/Jira/Calendar accounts), that is a product-scale change:
+per-user OAuth flows, a `user_id` dimension through every table, per-user
+API keys or login, and per-user memory. Treat that as a follow-on
+project, not a configuration change.
+
+**Ready for:** a personal production deployment, a small team that
+explicitly shares one set of tool connections, or a portfolio/interview
+demo with real side effects.
+**Not ready for:** public signups, tenant isolation, or compliance
+regimes requiring per-user data separation.
 
 ## License
 

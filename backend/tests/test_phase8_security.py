@@ -106,3 +106,63 @@ def test_cors_allows_configured_origin(client):
         headers={"Origin": "http://localhost:3000"},
     )
     assert res.headers.get("access-control-allow-origin") == "http://localhost:3000"
+
+
+@pytest.mark.asyncio
+async def test_batch_deletion_erasure():
+    """Batch deletion removes the batch and cascades to items/logs."""
+    import uuid as _uuid
+    from app.db.session import async_session_factory as factory
+    from app.db.models import BatchModel, ActionItemModel, ExecutionLogModel
+
+    async with factory() as session:
+        batch = BatchModel(
+            id=str(_uuid.uuid4()),
+            raw_text="Sarah: Alex, please file a ticket for the deletion bug.",
+            status="completed",
+        )
+        item = ActionItemModel(
+            id=str(_uuid.uuid4()),
+            batch_id=batch.id,
+            description="Test item",
+            suggested_tool="task_ledger",
+            source_snippet="Sarah: ...",
+            confidence=0.9,
+        )
+        session.add(batch)
+        session.add(item)
+        await session.commit()
+        bid, iid = batch.id, item.id
+        session.add(
+            ExecutionLogModel(
+                id=str(_uuid.uuid4()),
+                item_id=iid,
+                batch_id=bid,
+                tool="task_ledger",
+                status="success",
+                idempotency_hash="x" * 64,
+            )
+        )
+        await session.commit()
+
+    from fastapi import HTTPException, status
+    from app.api.endpoints.history import delete_batch
+
+    async with factory() as db:
+        result = await delete_batch(bid, db)
+        assert result["status"] == "deleted"
+
+    async with factory() as session:
+        from sqlalchemy import select as _select
+        assert (await session.execute(_select(BatchModel).where(BatchModel.id == bid))).scalar_one_or_none() is None
+        assert (await session.execute(_select(ActionItemModel).where(ActionItemModel.id == iid))).scalar_one_or_none() is None
+        assert (await session.execute(_select(ExecutionLogModel).where(ExecutionLogModel.batch_id == bid))).scalars().all() == []
+
+    # Second deletion must 404
+    from app.api.endpoints.history import delete_batch as _del
+    async with factory() as db:
+        try:
+            await _del(bid, db)
+            assert False, "should have raised"
+        except HTTPException as e:
+            assert e.status_code == 404

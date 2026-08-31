@@ -86,7 +86,7 @@ async def init_db() -> None:
         if result.scalar() is None:
             raise RuntimeError(
                 "Database schema is not initialized. Run migrations first: "
-                "'alembic upgrade head' (see backend/README). "
+                "'alembic upgrade head' from the backend directory. "
                 "Refusing to start with a missing schema."
             )
         logger.debug("Database schema verified (batches table present).")

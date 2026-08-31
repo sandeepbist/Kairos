@@ -10,7 +10,7 @@ echo "  Starting Kairos Ambient Action Agent System     "
 echo "=================================================="
 
 # 1. Start Infrastructure (PostgreSQL, Redis, Temporal)
-echo "📦 [1/4] Starting Docker services (PostgreSQL 5435, Redis 6381, Temporal 7234)..."
+echo "📦 [1/4] Starting Docker services (PostgreSQL 5435, Temporal 7234, Temporal UI 8234)..."
 if command -v docker-compose &> /dev/null; then
   docker-compose up -d
 else

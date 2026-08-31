@@ -111,7 +111,7 @@ class ExecutionLogModel(Base):
 
 
 class RoutingFeedbackModel(Base):
-    """Routing feedback table: records user acceptance or override for Mem0 learning."""
+    """Routing feedback table: records user acceptance or override for routing-memory learning."""
     __tablename__ = "routing_feedback"
 
     id = Column(String(36), primary_key=True, default=generate_uuid)

@@ -1,4 +1,4 @@
-"""Route Node: Adaptive routing calibration via positive/negative Mem0 feedback memory."""
+"""Route Node: Adaptive routing calibration via positive/negative routing-memory feedback."""
 from typing import Any
 from .state import AgentState
 from .memory import routing_memory

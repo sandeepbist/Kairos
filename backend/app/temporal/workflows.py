@@ -134,7 +134,7 @@ class ProcessBatchWorkflow:
                     ),
                 )
 
-                # Record feedback in Mem0 / DB
+                # Record feedback in routing memory
                 await workflow.execute_activity(
                     update_routing_memory_activity,
                     args=[item_id, batch_id, description, suggested_tool, final_tool, was_overridden],

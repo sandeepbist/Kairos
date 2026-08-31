@@ -295,7 +295,13 @@ async def extract_node(state: AgentState) -> dict[str, Any]:
             return {"extracted_items": items, "errors": errors}
 
     except Exception as e:
-        logger.warning(f"LLM extraction encountered an error: {e}. Falling back to deterministic extractor.")
-        errors.append(f"LLM extraction error: {str(e)}")
+        from app.core.redaction import redact_error
+
+        safe_message = redact_error(e)
+        logger.warning(
+            "LLM extraction encountered an error: %s. Falling back to deterministic extractor.",
+            safe_message,
+        )
+        errors.append(f"LLM extraction error: {safe_message}")
         items = deterministic_fallback_extractor(raw_text, source_type)
         return {"extracted_items": items, "errors": errors}

@@ -12,9 +12,9 @@ echo "=================================================="
 if ! (echo > /dev/tcp/127.0.0.1/5435) 2>/dev/null; then
   echo "📦 Starting isolated Docker services (PostgreSQL, Redis, Temporal)..."
   if command -v docker-compose &> /dev/null; then
-    docker-compose up -d
+    docker-compose -f docker-compose.dev.yml up -d
   else
-    docker compose up -d
+    docker compose -f docker-compose.dev.yml up -d
   fi
   echo "⏳ Waiting for database and Temporal to be ready..."
   for i in {1..30}; do

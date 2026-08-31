@@ -126,7 +126,7 @@ async def update_routing_memory_activity(
     final_tool: str,
     was_overridden: bool,
 ) -> None:
-    """Records user confirmation or override in Mem0 / DB routing memory."""
+    """Records user confirmation or override in the semantic routing memory."""
     await routing_memory.record_feedback(
         item_id=item_id,
         batch_id=batch_id,

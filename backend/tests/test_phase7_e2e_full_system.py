@@ -25,7 +25,7 @@ async def test_end_to_end_full_system_integration():
     5. HTTP Approval signal with payload overrides
     6. Multi-tool MCP executions (Jira, Calendar, Notion, Task Ledger)
     7. Database audit logs and SHA256 idempotency deduplication
-    8. Mem0 adaptive memory learning update
+    8. Adaptive routing-memory learning update
     9. Final HTTP history querying with external object links
     """
     # 1. Start live Temporal worker

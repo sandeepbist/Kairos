@@ -110,7 +110,7 @@ async def test_length_guardrail():
 
 
 # ---------------------------------------------------------
-# Test 4: Adaptive Routing Memory (Mem0 Feedback Loop)
+# Test 4: Adaptive Routing Memory feedback loop
 # ---------------------------------------------------------
 
 @pytest.mark.asyncio

@@ -60,3 +60,28 @@ async def get_execution_history(
         })
 
     return history
+
+
+@router.delete("/batches/{batch_id}", response_model=dict[str, str])
+async def delete_batch(
+    batch_id: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """Deletes a batch and all dependent records (GDPR-style erasure).
+
+    Cascades remove action items and execution logs. Routing feedback
+    rows carry no raw transcript content and are retained for the
+    learning loop.
+    """
+    query = select(BatchModel).where(BatchModel.id == batch_id)
+    result = await db.execute(query)
+    batch = result.scalar_one_or_none()
+    if not batch:
+        from fastapi import HTTPException, status
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Batch with ID '{batch_id}' not found.",
+        )
+    await db.delete(batch)
+    await db.commit()
+    return {"status": "deleted", "batch_id": batch_id}

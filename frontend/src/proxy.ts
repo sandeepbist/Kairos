@@ -50,6 +50,10 @@ export async function proxy(request: NextRequest) {
       headers.set(key, value);
     }
   });
+  // Always overwrite (not append) the key header: a client-supplied
+  // value must never survive, and in keyless dev mode we strip it so the
+  // backend's own auth decision is the only one that matters.
+  headers.delete("X-API-Key");
   if (API_KEY) {
     headers.set("X-API-Key", API_KEY);
   }

@@ -3,7 +3,7 @@ import Link from "next/link";
 
 // Public docs URL: exposed intentionally (dev convenience); empty in prod.
 const API_DOCS_URL = process.env.NEXT_PUBLIC_API_DOCS_URL || "";
-const TEMPORAL_UI_URL = process.env.NEXT_PUBLIC_TEMPORAL_UI_URL || "http://localhost:8234";
+const TEMPORAL_UI_URL = process.env.NEXT_PUBLIC_TEMPORAL_UI_URL || "";
 
 export function Footer() {
   return (
