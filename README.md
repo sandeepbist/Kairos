@@ -1,123 +1,174 @@
 # Kairos — Ambient Action Extraction & Execution Engine
 
-Kairos is a production-grade **Ambient Action Agent** that transforms messy, unstructured inputs (meeting transcripts, raw email threads, Slack conversations) into **real, verified side effects** across Notion, Jira, Google Calendar, and a custom internal Task Ledger via the **Model Context Protocol (MCP)**.
+Kairos turns unstructured input — meeting transcripts, email threads, Slack
+conversations — into **real, executed actions** across Notion, Jira, Google
+Calendar, and a built-in Task Ledger MCP server, behind a human approval
+checkpoint.
+
+Paste a transcript → the pipeline extracts candidate action items with
+verbatim source provenance → an operator reviews, edits, and approves →
+approved items execute against real APIs with SHA-256 idempotency and
+Temporal durable orchestration — and the system learns routing
+preferences from every decision.
 
 ---
 
-## 🏛️ Architecture Overview
+## Architecture
 
 ```mermaid
 flowchart TD
-    subgraph Ingestion
-        A[Unstructured Input: Meeting / Slack / Email] --> B[FastAPI /api/batches/ingest]
-        B --> C[PostgreSQL + AES-256 OAuth Vault]
-        B --> D[Temporal Server: ProcessBatchWorkflow]
+    subgraph Client
+        UI[Next.js 16 Dashboard] -- "same-origin /api/*" --> PX[Edge Proxy<br/>injects X-API-Key]
     end
-
-    subgraph Durable Orchestration
-        D --> E[Activity 1: LangGraph Structured Extraction]
-        E --> F[Prompt Injection Guard + Token Limiters]
-        F --> G[Mem0 Adaptive Routing Memory]
-        G --> H[Activity 2: Persist Action Items in PostgreSQL]
-        H --> I{Durable Signal Wait: ApprovalReceived}
-    end
-
-    subgraph Human in the Loop UI
-        I -.->|Poll /api/batches/id| J[Next.js 15 Frontend Dashboard]
-        J -.->|Review Cards & Synchronized Snippet Highlighting| J
-        J -->|POST /api/batches/id/approve| K[Signal Approval Received]
-        K -.-> I
-        I -->|7-Day Timeout Fallback| L[Auto-Expire / Archive]
-    end
-
-    subgraph MCP Execution Layer
-        I -->|Approved Decisions| M[Activity 3: Execute Approved Items]
-        M --> N[SHA256 Idempotency Engine]
-        N --> O[Atlassian Rovo Jira MCP]
-        N --> P[Google Calendar MCP]
-        N --> Q[Notion MCP Server]
-        N --> R[FastMCP 2.x Task Ledger Server]
-        M --> S[Activity 4: Update Mem0 Routing Feedback]
-        M --> T[Activity 5: Complete Batch & Write Audit Logs]
-    end
+    PX --> API[FastAPI API<br/>auth + rate limit]
+    API --> DB[(PostgreSQL)]
+    API -- start workflow --> TM[Temporal Server]
+    TM -- activity poll --> WK[Temporal Worker]
+    WK -- extraction/routing --> LG[LangGraph Pipeline]
+    WK -- approvals --> MCP[MCP Connector Layer]
+    MCP --> N[Notion API]
+    MCP --> J[Jira Cloud API]
+    MCP --> C[Google Calendar API]
+    MCP --> TL[Task Ledger MCP Server<br/>built-in, Postgres-backed]
+    WK -- feedback --> MEM[Semantic Routing Memory]
+    MEM --> DB
 ```
+
+| Layer | Choice | Why |
+|---|---|---|
+| Durable orchestration | Temporal | Crash-safe workflows; 7-day approval wait; per-item execution with retry; no duplicate side effects |
+| Extraction | LangGraph + structured LLM output (Gemini / OpenAI), deterministic offline fallback | Works with or without an LLM key; schema-validated output before anything executes |
+| Execution | MCP dispatch layer (mcp 2.x) + official REST APIs | The Task Ledger is a genuine MCP server (`call_tool` dispatch, stdio entrypoint); external connectors call official APIs through a shared retry transport |
+| Idempotency | SHA-256(batch, item, tool, canonical payload) checked against `execution_logs` | Replays and retries can never double-create |
+| Auth | Single operator API key, injected server-side by the Next edge proxy | Key never ships to the browser; constant-time comparison; per-IP rate limits |
+| Schema | Alembic migrations | Versioned, reproducible; app refuses to start on an unmigrated database |
+| Memory | Embedding-backed routing feedback (Gemini/OpenAI embeddings, cosine similarity) | Learns from confirmations *and* overrides; degrades to keyword matching offline |
 
 ---
 
-## 🚀 Quick Start
+## Quick start (local development)
 
-### 1. Prerequisites
-- Docker and Docker Compose
-- Python 3.11+
-- Node.js 18+ and npm
+Prerequisites: Docker, Python 3.11+, Node 18+.
 
-### 2. Start All Services with 1 Command
 ```bash
 ./scripts/start.sh
 ```
-This automatically launches:
-- **PostgreSQL 16 + pgvector** on `localhost:5435`
-- **Redis 7** on `localhost:6381`
-- **Temporal Server** on `localhost:7234` (Temporal UI on `http://localhost:8234`)
-- **FastAPI REST Backend** on `http://localhost:8000` (Swagger UI at `/docs`)
-- **Temporal Worker** listening on queue `kairos-batch-queue`
-- **Next.js Frontend Dashboard** on `http://localhost:3000`
 
----
+Launches PostgreSQL 16 (port 5435), Redis (6381), Temporal (7234, UI at
+8234), applies Alembic migrations, then starts the Temporal worker, the
+FastAPI API on `http://localhost:8000`, and the dashboard at
+`http://localhost:3000`.
 
-## 🧪 Battle Test Suite
+In development (no `API_KEY` set), auth is disabled and the system runs
+end to end with zero configuration. Add provider keys in **Settings** to
+enable live LLM extraction and real connector execution.
 
-Run the full, multi-phase automated test suite with live database and Temporal integration:
+## Test suite
 
 ```bash
 ./scripts/test.sh
 ```
 
-### Test Coverage Highlights (29/29 Passing):
-- **Phase 1 (DB Schemas & Validation)**: Pydantic schemas, NullPool async session isolation, cascade constraints, JSONB payload validations.
-- **Phase 2 (MCP Layer & Idempotency)**: Custom FastMCP 2.x server tools, Notion/Jira/Calendar/Ledger connectors, SHA256 deterministic idempotency deduplication.
-- **Phase 3 (LangGraph & Memory)**: Multi-speaker dialogue extraction, direct address assignee attribution, XML tag injection sanitization, Mem0 positive/negative preference learning loop.
-- **Phase 4 (Temporal Durable Orchestration)**: Multi-activity workflow execution, durable human approval signal wait, rejections handling, 7-day auto-archive.
-- **Phase 5 (FastAPI REST API)**: Full HTTP lifecycle, AES-256 Fernet OAuth token vault encryption/decryption, Langfuse telemetry.
-- **Phase 7 (End-to-End System Integration)**: Complete HTTP ingest $\rightarrow$ Temporal workflow $\rightarrow$ LangGraph extraction $\rightarrow$ UI Signal $\rightarrow$ MCP executions $\rightarrow$ DB audit logs.
+Runs the full battle suite (48 tests) against live Postgres and Temporal:
+schema & payload validation, MCP tool dispatch and idempotency
+deduplication, extraction and prompt-injection defense, routing-memory
+learning loop, durable workflow lifecycle (approval signal, rejections,
+unknown-item protection), API lifecycle, end-to-end integration,
+auth/rate-limit/CORS security, and connector retry resilience.
 
----
+## Production deployment
 
-## 🧩 Key Subsystems
+```bash
+cp .env.example .env   # fill in the required secrets
+docker compose -f docker-compose.prod.yml --env-file .env up -d --build
+```
 
-### 1. Custom FastMCP 2.x Task Ledger
-A custom Model Context Protocol server built with `mcp.server.mcpserver` that exposes 4 tools:
-- `create_task(title, notes, priority, due_date)`
-- `list_tasks(status)`
-- `complete_task(task_id)`
-- `delete_task(task_id)`
+The production stack runs the API, worker, Postgres, and Temporal on an
+internal bridge network — only the frontend is published (default
+`http://localhost:3000`). A one-shot migrate container applies migrations
+and gates startup on success. Required environment variables (missing
+values fail loudly at compose interpolation):
 
-### 2. SHA256 Deterministic Idempotency
-Prevents duplicate creations during network retries or signal replay:
-$$\text{Hash} = \text{SHA256}(\text{batch\_id} + \text{item\_id} + \text{tool} + \text{SHA256}(\text{payload\_json}))$$
+| Variable | Purpose |
+|---|---|
+| `POSTGRES_PASSWORD` | Database password (never the dev default) |
+| `API_KEY` | Operator API key injected by the proxy (≥16 chars) |
+| `ENCRYPTION_KEY` | Fresh 44-char Fernet key for the OAuth vault |
 
-### 3. Synchronized Source Provenance
-The Next.js frontend links extracted action items directly to the exact verbatim quotes in the original transcript with glowing synchronized hover highlighting.
+Optional: connector tokens (`NOTION_API_KEY`, `JIRA_API_TOKEN`,
+`JIRA_EMAIL`, `JIRA_DOMAIN`, `GOOGLE_CALENDAR_ACCESS_TOKEN`), LLM keys
+(`GOOGLE_API_KEY` / `OPENAI_API_KEY`), observability (`LANGFUSE_*`),
+`CORS_ORIGINS` for the published frontend origin.
 
----
+Generate secrets:
 
-## 📁 Repository Structure
+```bash
+python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+openssl rand -base64 24
+```
+
+With `APP_ENV=production` the API enforces: API key present, `DEBUG=false`,
+fresh encryption key, JSON logs, no OpenAPI/docs endpoints, HSTS headers.
+
+## Key subsystems
+
+**Human verification workbench.** Review cards show the verbatim source
+snippet, speaker, assignee, confidence, and pre-filled tool payload.
+Hovering a card highlights the exact source line. Decisions: approve,
+modify payload or destination tool, or reject — individually or in bulk.
+
+**Task Ledger MCP server.** A real MCP server (`mcp` 2.x SDK) exposing
+`create_task`, `list_tasks`, `complete_task`, `delete_task`, backed by
+Postgres. In-process execution goes through the same `call_tool` dispatch
+path an external MCP client would use, and it can be run standalone:
+
+```bash
+python -m app.mcp.servers.task_ledger   # stdio MCP server
+```
+
+**Idempotency engine.** Before any execution, `SHA-256(batch_id +
+item_id + tool + canonical_payload_json)` is checked against successful
+`execution_logs`; a hit returns the recorded result without re-firing.
+
+**Routing memory.** Every decision is stored (with an embedding when an
+LLM key is configured). Similar past items reinforce confirmed routes,
+flip suggestions toward overridden destinations, and penalize rejected
+ones — with reasons surfaced in the review UI.
+
+**Connector resilience.** A shared httpx transport retries 408/429/5xx
+and transient network errors with jittered exponential backoff,
+honoring `Retry-After` — below the activity level, so the idempotency
+hash stays stable.
+
+## Repository layout
 
 ```
-Kairos/
-├── backend/
-│   ├── app/
-│   │   ├── api/          # FastAPI routes (batches, history, connectors)
-│   │   ├── core/         # AES-256 security vault, telemetry
-│   │   ├── db/           # SQLAlchemy models and async session factory
-│   │   ├── mcp/          # FastMCP server, connectors, client manager
-│   │   ├── pipelines/    # LangGraph extraction, ingest guards, memory
-│   │   ├── schemas/      # Strict Pydantic payload models
-│   │   ├── temporal/     # Workflows, activities, background worker
-│   │   ├── config.py     # BaseSettings configuration
-│   │   └── main.py       # FastAPI application entrypoint
-│   └── tests/            # Battle test suites (Phases 1-7)
-├── frontend/             # Next.js 15 TypeScript Dashboard
-├── scripts/              # start.sh, test.sh orchestration scripts
-└── docker-compose.yml    # Isolated Postgres, Redis, Temporal services
+backend/
+  app/api/        REST endpoints (batches, history, connectors)
+  app/core/       auth, security vault, rate limiting, logging, telemetry
+  app/db/         SQLAlchemy models, async sessions, pool policy
+  app/mcp/        connector layer, retry transport, Task Ledger MCP server
+  app/pipelines/  LangGraph ingest/extract/route, semantic memory
+  app/temporal/   workflow, activities, worker
+  alembic/        versioned migrations
+  tests/          battle test suites
+frontend/         Next.js 16 dashboard + edge API proxy
+scripts/          start.sh, test.sh
+docker-compose.dev.yml   local infrastructure
+docker-compose.prod.yml  production stack
+.github/workflows/       CI (backend suite + frontend lint/typecheck/build)
 ```
+
+## Security notes
+
+- OAuth/API credentials are AES-256 (Fernet) encrypted at rest; decryption
+  happens in memory at execution time only.
+- All pasted text is treated as untrusted data: length-guarded, wrapped
+  in explicit XML delimiters, and nothing executes without human approval.
+- Per-IP rate limits: 60 reads/min, 10 writes/min; health probes exempt.
+- Strict CORS (exact origins), security headers (nosniff, DENY, HSTS in
+  production), JSON logs, no stack traces in responses.
+
+## License
+
+MIT — see [LICENSE](LICENSE).
