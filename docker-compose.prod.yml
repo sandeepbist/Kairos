@@ -1,0 +1,123 @@
+# Production-oriented Kairos stack.
+# Requires .env with: POSTGRES_PASSWORD, API_KEY, ENCRYPTION_KEY (fresh
+# Fernet key), and optionally connector/LLM keys. API and worker stay on
+# the internal network; only the frontend is published.
+#
+#   docker compose -f docker-compose.prod.yml --env-file .env up -d --build
+
+name: kairos-prod
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-kairos_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      POSTGRES_DB: ${POSTGRES_DB:-kairos_db}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    networks: [internal]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-kairos_user} -d ${POSTGRES_DB:-kairos_db}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  temporal:
+    image: temporalio/temporal:1.8.2
+    command: ["server", "start-dev", "--ip", "0.0.0.0", "--port", "7234", "--db-filename", "/data/temporal.db"]
+    volumes:
+      - temporaldata:/data
+    networks: [internal]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "nc", "-z", "localhost", "7234"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  migrate:
+    build:
+      context: ./backend
+    command: ["python", "-m", "alembic", "upgrade", "head"]
+    working_dir: /app/backend
+    environment: &backend_env
+      APP_ENV: production
+      DEBUG: "false"
+      API_KEY: ${API_KEY:?API_KEY is required}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY:?ENCRYPTION_KEY (44-char Fernet key) is required}
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: ${POSTGRES_USER:-kairos_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-kairos_db}
+      TEMPORAL_HOST: temporal:7234
+      TEMPORAL_TASK_QUEUE: kairos-batch-queue
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
+      SANDBOX_MODE: ${SANDBOX_MODE:-false}
+      GOOGLE_API_KEY: ${GOOGLE_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      DEFAULT_MODEL_NAME: ${DEFAULT_MODEL_NAME:-gemini-2.5-flash}
+      LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-}
+      LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-}
+    networks: [internal]
+    restart: "no"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  api:
+    build:
+      context: ./backend
+    environment: *backend_env
+    networks: [internal]
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      temporal:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
+  worker:
+    build:
+      context: ./backend
+    command: ["python", "-m", "app.temporal.worker"]
+    working_dir: /app/backend
+    environment: *backend_env
+    networks: [internal]
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      temporal:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        NEXT_PUBLIC_TEMPORAL_UI_URL: ${NEXT_PUBLIC_TEMPORAL_UI_URL:-}
+        NEXT_PUBLIC_API_DOCS_URL: ${NEXT_PUBLIC_API_DOCS_URL:-}
+    environment:
+      BACKEND_INTERNAL_URL: http://api:8000
+      KAIROS_API_KEY: ${API_KEY:?API_KEY is required}
+    ports:
+      - "${FRONTEND_PORT:-3000}:3000"
+    networks: [internal]
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+
+networks:
+  internal:
+    driver: bridge
+
+volumes:
+  pgdata:
+  temporaldata:
