@@ -3,20 +3,45 @@
 import React, { useEffect, useState } from "react";
 import { getConnectorsStatus, toggleSandbox, saveOAuthToken, deleteOAuthToken } from "@/lib/api";
 import { errorMessage } from "@/lib/errors";
-import { ConnectorsStatusResponse } from "@/lib/types";
+import { ConnectorsStatusResponse, TargetTool } from "@/lib/types";
+
+type Notice = { text: string; type: "success" | "error" | "info" } | null;
+
+interface CredentialConfig {
+  provider: string;
+  label: string;
+  hint: string;
+  linkLabel?: string;
+  linkUrl?: string;
+  placeholder: string;
+  connectedKey: (s: ConnectorsStatusResponse) => boolean;
+}
+
+const TOOL_CARDS: Array<{
+  tool: TargetTool;
+  name: string;
+  detail: string;
+  protocol: string;
+}> = [
+  { tool: "notion", name: "Notion", detail: "Creates database pages via Notion API v1.", protocol: "api.notion.so" },
+  { tool: "jira", name: "Jira", detail: "Files issues via Jira Cloud REST v3.", protocol: "atlassian.net" },
+  { tool: "calendar", name: "Google Calendar", detail: "Creates events with reminders via Calendar API v3.", protocol: "googleapis.com" },
+  { tool: "task_ledger", name: "Task Ledger", detail: "Built-in MCP server, backed by Postgres. Always available.", protocol: "mcp · internal" },
+];
 
 export default function SettingsPage() {
   const [status, setStatus] = useState<ConnectorsStatusResponse | null>(null);
   const [sandboxEnabled, setSandboxEnabled] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [message, setMessage] = useState<{ text: string; type: "success" | "error" | "info" } | null>(null);
+  const [message, setMessage] = useState<Notice>(null);
 
-  // Live Token States
-  const [geminiToken, setGeminiToken] = useState("");
-  const [openaiToken, setOpenaiToken] = useState("");
-  const [jiraToken, setJiraToken] = useState("");
-  const [notionToken, setNotionToken] = useState("");
-  const [calendarToken, setCalendarToken] = useState("");
+  const [tokenValues, setTokenValues] = useState<Record<string, string>>({
+    gemini: "",
+    openai: "",
+    notion: "",
+    jira: "",
+    google_calendar: "",
+  });
   const [savingProvider, setSavingProvider] = useState<string | null>(null);
 
   const loadStatus = () => {
@@ -40,35 +65,31 @@ export default function SettingsPage() {
       const res = await toggleSandbox(next);
       setSandboxEnabled(res.sandbox_mode);
       setMessage({
-        text: `Execution Mode set to ${res.sandbox_mode ? "SANDBOX (Offline Emulation)" : "LIVE (Real HTTP APIs & MCP Connectors)"}`,
+        text: res.sandbox_mode
+          ? "Sandbox enabled — tool calls are simulated for new batches."
+          : "Live mode — new batches execute against real APIs.",
         type: "info",
       });
       loadStatus();
     } catch {
-      setMessage({ text: "Failed to update sandbox mode", type: "error" });
+      setMessage({ text: "Failed to update execution mode", type: "error" });
     } finally {
       setSaving(false);
     }
   };
 
-  const handleSaveToken = async (provider: string, tokenValue: string) => {
-    if (!tokenValue.trim()) {
-      setMessage({ text: `Please enter a valid token for ${provider}`, type: "error" });
+  const handleSaveToken = async (provider: string) => {
+    const value = tokenValues[provider] || "";
+    if (!value.trim()) {
+      setMessage({ text: `Enter a valid token for ${provider}`, type: "error" });
       return;
     }
     setSavingProvider(provider);
     setMessage(null);
     try {
-      await saveOAuthToken(provider, tokenValue.trim());
-      setMessage({
-        text: `Successfully encrypted and saved ${provider.toUpperCase()} credentials into PostgreSQL Vault!`,
-        type: "success",
-      });
-      if (provider === "gemini") setGeminiToken("");
-      if (provider === "openai") setOpenaiToken("");
-      if (provider === "jira") setJiraToken("");
-      if (provider === "notion") setNotionToken("");
-      if (provider === "google_calendar") setCalendarToken("");
+      await saveOAuthToken(provider, value.trim());
+      setMessage({ text: `${provider} credential encrypted into the vault.`, type: "success" });
+      setTokenValues((prev) => ({ ...prev, [provider]: "" }));
       loadStatus();
     } catch (err) {
       setMessage({ text: errorMessage(err, `Failed to save ${provider} token`), type: "error" });
@@ -82,10 +103,7 @@ export default function SettingsPage() {
     setMessage(null);
     try {
       await deleteOAuthToken(provider);
-      setMessage({
-        text: `Disconnected ${provider.toUpperCase()} credentials from PostgreSQL Vault.`,
-        type: "info",
-      });
+      setMessage({ text: `${provider} credential removed from the vault.`, type: "info" });
       loadStatus();
     } catch (err) {
       setMessage({ text: errorMessage(err, `Failed to disconnect ${provider}`), type: "error" });
@@ -100,407 +118,226 @@ export default function SettingsPage() {
   const isJiraConnected = Boolean(status?.connectors?.jira?.oauth_connected);
   const isCalendarConnected = Boolean(status?.connectors?.calendar?.oauth_connected);
 
+  const credentialCards: CredentialConfig[] = [
+    {
+      provider: "gemini",
+      label: "Google Gemini",
+      hint: "Free key from aistudio.google.com. Powers structured extraction.",
+      linkLabel: "aistudio.google.com",
+      linkUrl: "https://aistudio.google.com",
+      placeholder: "Gemini API key",
+      connectedKey: () => isGeminiConnected,
+    },
+    {
+      provider: "openai",
+      label: "OpenAI",
+      hint: "Key from platform.openai.com. Alternative extraction model.",
+      linkLabel: "platform.openai.com",
+      linkUrl: "https://platform.openai.com/api-keys",
+      placeholder: "sk-…",
+      connectedKey: () => isOpenAIConnected,
+    },
+    {
+      provider: "notion",
+      label: "Notion",
+      hint: "Internal integration secret. Grant the integration access to your target database in Notion first.",
+      linkLabel: "notion.so/my-integrations",
+      linkUrl: "https://www.notion.so/my-integrations",
+      placeholder: "secret_…",
+      connectedKey: () => isNotionConnected,
+    },
+    {
+      provider: "jira",
+      label: "Jira",
+      hint: "Atlassian API token, paired with your account email.",
+      linkLabel: "Atlassian security settings",
+      linkUrl: "https://id.atlassian.com/manage-profile/security/api-tokens",
+      placeholder: "Atlassian API token",
+      connectedKey: () => isJiraConnected,
+    },
+    {
+      provider: "google_calendar",
+      label: "Google Calendar",
+      hint: "OAuth access token with calendar.events scope.",
+      placeholder: "OAuth access token",
+      connectedKey: () => isCalendarConnected,
+    },
+  ];
+
+  const noticeClass = message
+    ? message.type === "success"
+      ? "notice notice-ok"
+      : message.type === "error"
+        ? "notice notice-error"
+        : "notice notice-info"
+    : "";
+
   return (
-    <div className="container" style={{ maxWidth: "980px", paddingBottom: "6rem" }}>
-      <div style={{ marginBottom: "2rem" }}>
-        <h1 style={{ fontSize: "2rem", fontWeight: 800, letterSpacing: "-0.02em" }}>
-          Connectors, AI Models & Live Vault Settings
+    <div className="container" style={{ maxWidth: "760px" }}>
+      {/* Header */}
+      <div className="rise" style={{ marginBottom: "34px" }}>
+        <p className="mono-label" style={{ marginBottom: "8px" }}>
+          CONFIGURATION
+        </p>
+        <h1 className="h-title" style={{ fontSize: "1.4rem" }}>
+          Settings
         </h1>
-        <p style={{ color: "var(--text-secondary)", fontSize: "0.95rem", marginTop: "0.25rem" }}>
-          Configure live LLM extraction models, encrypted OAuth 2.1 credentials, and target tool APIs.
+        <p className="dim" style={{ fontSize: "0.84rem", marginTop: "4px" }}>
+          Execution mode, extraction models, and connected tool credentials.
         </p>
       </div>
 
       {message && (
-        <div style={{
-          padding: "0.75rem 1rem",
-          borderRadius: "8px",
-          background: message.type === "success" ? "rgba(16, 185, 129, 0.15)" : message.type === "error" ? "rgba(244, 63, 94, 0.15)" : "rgba(56, 189, 248, 0.15)",
-          border: `1px solid ${message.type === "success" ? "rgba(16, 185, 129, 0.3)" : message.type === "error" ? "rgba(244, 63, 94, 0.3)" : "rgba(56, 189, 248, 0.3)"}`,
-          color: message.type === "success" ? "#34d399" : message.type === "error" ? "#fb7185" : "#38bdf8",
-          fontSize: "0.875rem",
-          marginBottom: "1.5rem",
-        }}>
-          {message.type === "success" ? "✓" : message.type === "error" ? "⚠️" : "ℹ️"} {message.text}
+        <div className={`${noticeClass} fade-in`} style={{ marginBottom: "20px" }}>
+          {message.text}
         </div>
       )}
 
-      {/* Execution Mode Toggle Card */}
-      <div className="glass-panel" style={{ padding: "1.5rem", marginBottom: "2rem" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "1rem" }}>
+      {/* Execution mode */}
+      <section className="panel rise rise-1" style={{ padding: "18px 22px", marginBottom: "28px" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "18px", flexWrap: "wrap" }}>
           <div>
-            <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-              <h3 style={{ fontSize: "1.1rem", fontWeight: 700 }}>Execution Mode</h3>
-              <span className="badge" style={{ background: sandboxEnabled ? "rgba(245, 158, 11, 0.2)" : "rgba(16, 185, 129, 0.2)", color: sandboxEnabled ? "#fbbf24" : "#34d399" }}>
-                {sandboxEnabled ? "Sandbox (Offline Emulation)" : "Live Production APIs"}
+            <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "6px" }}>
+              <span className="h-section">Execution mode</span>
+              <span
+                className="tag"
+                style={{
+                  color: sandboxEnabled ? "var(--warn)" : "var(--ok)",
+                  borderColor: sandboxEnabled ? "rgba(234, 179, 8, 0.3)" : "rgba(74, 222, 128, 0.3)",
+                }}
+              >
+                {sandboxEnabled ? "SANDBOX" : "LIVE"}
               </span>
             </div>
-            <p style={{ color: "var(--text-secondary)", fontSize: "0.85rem", marginTop: "0.35rem", maxWidth: "600px" }}>
+            <p className="dim" style={{ fontSize: "0.82rem", maxWidth: "420px" }}>
               {sandboxEnabled
-                ? "Sandbox Mode simulates tool responses with realistic schemas without making live network calls."
-                : "Live Mode executes real HTTP REST calls and MCP requests to Atlassian Jira, Notion API v1, and Google Calendar API v3 using credentials from the vault below."}
+                ? "Tool calls return simulated results — no external requests, no side effects."
+                : "Approved actions execute real calls to Jira, Notion, and Calendar using the vault credentials below."}
             </p>
           </div>
 
           <button
+            type="button"
+            className="switch"
+            data-on={sandboxEnabled}
             onClick={handleToggleSandbox}
             disabled={saving}
-            className={`btn ${sandboxEnabled ? "btn-primary" : "btn-secondary"}`}
-            style={{ padding: "0.6rem 1.25rem", fontSize: "0.875rem" }}
+            aria-label="Toggle sandbox mode"
+            role="switch"
+            aria-checked={sandboxEnabled}
           >
-            {saving ? "Updating..." : sandboxEnabled ? "Switch to Live Production Mode" : "Switch to Sandbox Mode"}
+            <span className="switch-thumb" />
           </button>
         </div>
-      </div>
+      </section>
 
-      {/* AI Extraction Model Vault */}
-      <h3 style={{ fontSize: "1.2rem", fontWeight: 700, marginBottom: "0.5rem" }}>
-        🤖 AI Reasoning & Structured Extraction Model
-      </h3>
-      <p style={{ fontSize: "0.85rem", color: "var(--text-secondary)", marginBottom: "1.25rem" }}>
-        Kairos uses multi-turn structured LLM output to reason over transcripts, resolve dates, and format tool schemas.
+      {/* Credentials */}
+      <p className="mono-label rise rise-2" style={{ marginBottom: "14px" }}>
+        CREDENTIAL VAULT — AES-256 ENCRYPTED AT REST
       </p>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1.25rem", marginBottom: "2.5rem" }}>
-        {/* Google Gemini */}
-        <div className="glass-panel" style={{ padding: "1.25rem" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.5rem" }}>
-            <span style={{ fontWeight: 700, color: "#38bdf8", fontSize: "0.95rem" }}>Google Gemini API Key</span>
-            {isGeminiConnected ? (
-              <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-                <span className="badge badge-confidence-high">🟢 Live (gemini-2.0-flash)</span>
-                <button
-                  onClick={() => handleDeleteToken("gemini")}
-                  disabled={savingProvider === "gemini"}
-                  style={{ background: "none", border: "none", color: "var(--text-muted)", fontSize: "0.75rem", cursor: "pointer", textDecoration: "underline" }}
-                >
-                  Disconnect
-                </button>
-              </div>
-            ) : (
-              <span className="badge" style={{ background: "rgba(255, 255, 255, 0.05)", color: "var(--text-muted)" }}>
-                Not Configured
-              </span>
-            )}
-          </div>
-          <p style={{ fontSize: "0.8rem", color: "var(--text-muted)", marginBottom: "0.75rem" }}>
-            Obtain a free API key at <a href="https://aistudio.google.com" target="_blank" rel="noreferrer" style={{ color: "#38bdf8", textDecoration: "underline" }}>aistudio.google.com</a>.
-          </p>
-          <div style={{ display: "flex", gap: "0.5rem" }}>
-            <input
-              type="password"
-              placeholder="Enter Google Gemini API Key"
-              value={geminiToken}
-              onChange={(e) => setGeminiToken(e.target.value)}
-              style={{
-                flex: 1,
-                padding: "0.5rem 0.75rem",
-                borderRadius: "6px",
-                background: "rgba(0, 0, 0, 0.4)",
-                border: "1px solid var(--border-subtle)",
-                color: "var(--text-primary)",
-                fontSize: "0.85rem",
-              }}
-            />
-            <button
-              onClick={() => handleSaveToken("gemini", geminiToken)}
-              disabled={savingProvider === "gemini"}
-              className="btn btn-secondary"
-              style={{ fontSize: "0.85rem", padding: "0.5rem 1rem" }}
+      <div style={{ display: "flex", flexDirection: "column", gap: "10px", marginBottom: "36px" }}>
+        {credentialCards.map((card, idx) => {
+          const connected = card.connectedKey(status as ConnectorsStatusResponse);
+          return (
+            <div
+              key={card.provider}
+              className={`panel rise rise-${Math.min(idx + 1, 5)}`}
+              style={{ padding: "16px 20px" }}
             >
-              {savingProvider === "gemini" ? "Saving..." : isGeminiConnected ? "Update Key" : "Save Gemini Key"}
-            </button>
-          </div>
-        </div>
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  marginBottom: "10px",
+                  gap: "10px",
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: "9px" }}>
+                  <span
+                    className={`status-dot ${connected ? "status-on" : "status-off"}`}
+                  />
+                  <span className="h-section">{card.label}</span>
+                </div>
+                {connected && (
+                  <button
+                    type="button"
+                    className="btn btn-ghost btn-sm"
+                    onClick={() => handleDeleteToken(card.provider)}
+                    disabled={savingProvider === card.provider}
+                  >
+                    Disconnect
+                  </button>
+                )}
+              </div>
 
-        {/* OpenAI */}
-        <div className="glass-panel" style={{ padding: "1.25rem" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.5rem" }}>
-            <span style={{ fontWeight: 700, color: "#10b981", fontSize: "0.95rem" }}>OpenAI API Key</span>
-            {isOpenAIConnected ? (
-              <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-                <span className="badge badge-confidence-high">🟢 Live (gpt-4o-mini)</span>
+              <p className="dim" style={{ fontSize: "0.79rem", marginBottom: "12px", lineHeight: 1.5 }}>
+                {card.hint}{" "}
+                {card.linkUrl && (
+                  <a href={card.linkUrl} target="_blank" rel="noreferrer" className="link-accent">
+                    {card.linkLabel}
+                  </a>
+                )}
+              </p>
+
+              <div style={{ display: "flex", gap: "8px" }}>
+                <input
+                  type="password"
+                  className="input mono"
+                  placeholder={card.placeholder}
+                  value={tokenValues[card.provider] || ""}
+                  onChange={(e) =>
+                    setTokenValues((prev) => ({ ...prev, [card.provider]: e.target.value }))
+                  }
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") handleSaveToken(card.provider);
+                  }}
+                  aria-label={`${card.label} credential`}
+                />
                 <button
-                  onClick={() => handleDeleteToken("openai")}
-                  disabled={savingProvider === "openai"}
-                  style={{ background: "none", border: "none", color: "var(--text-muted)", fontSize: "0.75rem", cursor: "pointer", textDecoration: "underline" }}
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={() => handleSaveToken(card.provider)}
+                  disabled={savingProvider === card.provider}
+                  style={{ flexShrink: 0 }}
                 >
-                  Disconnect
+                  {savingProvider === card.provider ? "Saving…" : connected ? "Update" : "Save"}
                 </button>
               </div>
-            ) : (
-              <span className="badge" style={{ background: "rgba(255, 255, 255, 0.05)", color: "var(--text-muted)" }}>
-                Not Configured
-              </span>
-            )}
-          </div>
-          <p style={{ fontSize: "0.8rem", color: "var(--text-muted)", marginBottom: "0.75rem" }}>
-            Obtain an API key at <a href="https://platform.openai.com/api-keys" target="_blank" rel="noreferrer" style={{ color: "#10b981", textDecoration: "underline" }}>platform.openai.com</a>.
-          </p>
-          <div style={{ display: "flex", gap: "0.5rem" }}>
-            <input
-              type="password"
-              placeholder="Enter OpenAI API Key (sk-...)"
-              value={openaiToken}
-              onChange={(e) => setOpenaiToken(e.target.value)}
-              style={{
-                flex: 1,
-                padding: "0.5rem 0.75rem",
-                borderRadius: "6px",
-                background: "rgba(0, 0, 0, 0.4)",
-                border: "1px solid var(--border-subtle)",
-                color: "var(--text-primary)",
-                fontSize: "0.85rem",
-              }}
-            />
-            <button
-              onClick={() => handleSaveToken("openai", openaiToken)}
-              disabled={savingProvider === "openai"}
-              className="btn btn-secondary"
-              style={{ fontSize: "0.85rem", padding: "0.5rem 1rem" }}
-            >
-              {savingProvider === "openai" ? "Saving..." : isOpenAIConnected ? "Update Key" : "Save OpenAI Key"}
-            </button>
-          </div>
-        </div>
+            </div>
+          );
+        })}
       </div>
 
-      {/* Target MCP Tool Credentials Vault */}
-      <h3 style={{ fontSize: "1.2rem", fontWeight: 700, marginBottom: "0.5rem" }}>
-        🔐 Target Tool OAuth Vault & Production Credentials
-      </h3>
-      <p style={{ fontSize: "0.85rem", color: "var(--text-secondary)", marginBottom: "1.25rem" }}>
-        Credentials are encrypted with AES-256 Fernet keys in PostgreSQL and decrypted in-memory during approved execution.
+      {/* Tool ecosystem */}
+      <p className="mono-label" style={{ marginBottom: "14px" }}>
+        TOOL ECOSYSTEM
       </p>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: "1.25rem", marginBottom: "2.5rem" }}>
-        {/* Notion Token Form */}
-        <div className="glass-panel" style={{ padding: "1.25rem" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.5rem" }}>
-            <span style={{ fontWeight: 700, color: "#c084fc", fontSize: "0.95rem" }}>Notion Integration Secret (secret_...)</span>
-            {isNotionConnected ? (
-              <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-                <span className="badge badge-confidence-high">✓ Connected in Vault</span>
-                <button
-                  onClick={() => handleDeleteToken("notion")}
-                  disabled={savingProvider === "notion"}
-                  style={{ background: "none", border: "none", color: "var(--text-muted)", fontSize: "0.75rem", cursor: "pointer", textDecoration: "underline" }}
-                >
-                  Disconnect
-                </button>
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))",
+          gap: "10px",
+        }}
+      >
+        {TOOL_CARDS.map((t) => {
+          const info = status?.connectors?.[t.tool];
+          const connected = t.tool === "task_ledger" ? true : Boolean(info?.oauth_connected);
+          return (
+            <div key={t.tool} className="panel" style={{ padding: "14px 16px" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
+                <span className={`tag tag-tool tag-${t.tool}`}>{t.name}</span>
+                <span className={`status-dot ${connected ? "status-on" : "status-off"}`} />
               </div>
-            ) : (
-              <span className="badge" style={{ background: "rgba(255, 255, 255, 0.05)", color: "var(--text-muted)" }}>
-                Not Configured
-              </span>
-            )}
-          </div>
-          <p style={{ fontSize: "0.8rem", color: "var(--text-muted)", marginBottom: "0.75rem" }}>
-            Create an internal integration at <a href="https://www.notion.so/my-integrations" target="_blank" rel="noreferrer" style={{ color: "#c084fc", textDecoration: "underline" }}>notion.so/my-integrations</a>. Ensure you grant your integration access to your Notion page/database.
-          </p>
-          <div style={{ display: "flex", gap: "0.5rem" }}>
-            <input
-              type="password"
-              placeholder="Enter Notion Internal Integration Secret"
-              value={notionToken}
-              onChange={(e) => setNotionToken(e.target.value)}
-              style={{
-                flex: 1,
-                padding: "0.5rem 0.75rem",
-                borderRadius: "6px",
-                background: "rgba(0, 0, 0, 0.4)",
-                border: "1px solid var(--border-subtle)",
-                color: "var(--text-primary)",
-                fontSize: "0.85rem",
-              }}
-            />
-            <button
-              onClick={() => handleSaveToken("notion", notionToken)}
-              disabled={savingProvider === "notion"}
-              className="btn btn-secondary"
-              style={{ fontSize: "0.85rem", padding: "0.5rem 1rem" }}
-            >
-              {savingProvider === "notion" ? "Saving..." : isNotionConnected ? "Update Token" : "Save Notion Token"}
-            </button>
-          </div>
-        </div>
-
-        {/* Jira Token Form */}
-        <div className="glass-panel" style={{ padding: "1.25rem" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.5rem" }}>
-            <span style={{ fontWeight: 700, color: "#60a5fa", fontSize: "0.95rem" }}>Atlassian Jira API Token / Bearer Token</span>
-            {isJiraConnected ? (
-              <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-                <span className="badge badge-confidence-high">✓ Connected in Vault</span>
-                <button
-                  onClick={() => handleDeleteToken("jira")}
-                  disabled={savingProvider === "jira"}
-                  style={{ background: "none", border: "none", color: "var(--text-muted)", fontSize: "0.75rem", cursor: "pointer", textDecoration: "underline" }}
-                >
-                  Disconnect
-                </button>
-              </div>
-            ) : (
-              <span className="badge" style={{ background: "rgba(255, 255, 255, 0.05)", color: "var(--text-muted)" }}>
-                Not Configured
-              </span>
-            )}
-          </div>
-          <p style={{ fontSize: "0.8rem", color: "var(--text-muted)", marginBottom: "0.75rem" }}>
-            Generate an API token from <a href="https://id.atlassian.com/manage-profile/security/api-tokens" target="_blank" rel="noreferrer" style={{ color: "#60a5fa", textDecoration: "underline" }}>Atlassian Security Settings</a>.
-          </p>
-          <div style={{ display: "flex", gap: "0.5rem" }}>
-            <input
-              type="password"
-              placeholder="Enter Atlassian Jira API Token"
-              value={jiraToken}
-              onChange={(e) => setJiraToken(e.target.value)}
-              style={{
-                flex: 1,
-                padding: "0.5rem 0.75rem",
-                borderRadius: "6px",
-                background: "rgba(0, 0, 0, 0.4)",
-                border: "1px solid var(--border-subtle)",
-                color: "var(--text-primary)",
-                fontSize: "0.85rem",
-              }}
-            />
-            <button
-              onClick={() => handleSaveToken("jira", jiraToken)}
-              disabled={savingProvider === "jira"}
-              className="btn btn-secondary"
-              style={{ fontSize: "0.85rem", padding: "0.5rem 1rem" }}
-            >
-              {savingProvider === "jira" ? "Saving..." : isJiraConnected ? "Update Token" : "Save Jira Token"}
-            </button>
-          </div>
-        </div>
-
-        {/* Google Calendar Token Form */}
-        <div className="glass-panel" style={{ padding: "1.25rem" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.5rem" }}>
-            <span style={{ fontWeight: 700, color: "#34d399", fontSize: "0.95rem" }}>Google Calendar OAuth Access Token</span>
-            {isCalendarConnected ? (
-              <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-                <span className="badge badge-confidence-high">✓ Connected in Vault</span>
-                <button
-                  onClick={() => handleDeleteToken("google_calendar")}
-                  disabled={savingProvider === "google_calendar"}
-                  style={{ background: "none", border: "none", color: "var(--text-muted)", fontSize: "0.75rem", cursor: "pointer", textDecoration: "underline" }}
-                >
-                  Disconnect
-                </button>
-              </div>
-            ) : (
-              <span className="badge" style={{ background: "rgba(255, 255, 255, 0.05)", color: "var(--text-muted)" }}>
-                Not Configured
-              </span>
-            )}
-          </div>
-          <p style={{ fontSize: "0.8rem", color: "var(--text-muted)", marginBottom: "0.75rem" }}>
-            Google Calendar v3 OAuth Bearer access token with <code>https://www.googleapis.com/auth/calendar.events</code> scope.
-          </p>
-          <div style={{ display: "flex", gap: "0.5rem" }}>
-            <input
-              type="password"
-              placeholder="Enter Google Calendar OAuth Access Token"
-              value={calendarToken}
-              onChange={(e) => setCalendarToken(e.target.value)}
-              style={{
-                flex: 1,
-                padding: "0.5rem 0.75rem",
-                borderRadius: "6px",
-                background: "rgba(0, 0, 0, 0.4)",
-                border: "1px solid var(--border-subtle)",
-                color: "var(--text-primary)",
-                fontSize: "0.85rem",
-              }}
-            />
-            <button
-              onClick={() => handleSaveToken("google_calendar", calendarToken)}
-              disabled={savingProvider === "google_calendar"}
-              className="btn btn-secondary"
-              style={{ fontSize: "0.85rem", padding: "0.5rem 1rem" }}
-            >
-              {savingProvider === "google_calendar" ? "Saving..." : isCalendarConnected ? "Update Token" : "Save Calendar Token"}
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {/* Connected MCP Tool Ecosystem Grid */}
-      <h3 style={{ fontSize: "1.2rem", fontWeight: 700, marginBottom: "1rem" }}>
-        Connected MCP Tool Ecosystem
-      </h3>
-
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1.25rem" }}>
-        {/* Notion */}
-        <div className="glass-panel" style={{ padding: "1.25rem" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.75rem" }}>
-            <span style={{ fontWeight: 700, fontSize: "1rem", color: "#c084fc" }}>Notion API / MCP</span>
-            {isNotionConnected ? (
-              <span className="badge badge-confidence-high">🟢 Connected</span>
-            ) : (
-              <span className="badge" style={{ background: "rgba(255, 255, 255, 0.05)", color: "var(--text-muted)" }}>⚪ Disconnected</span>
-            )}
-          </div>
-          <p style={{ fontSize: "0.8rem", color: "var(--text-secondary)", lineHeight: 1.5 }}>
-            Official Notion API v1 & Model Context Protocol. Creates database pages with rich text blocks and returns real URLs.
-          </p>
-          <div style={{ marginTop: "1rem", fontSize: "0.75rem", color: "var(--text-muted)" }}>
-            Protocol: <code>Notion API v1 / SSE</code> • Target: <code>api.notion.so</code>
-          </div>
-        </div>
-
-        {/* Jira */}
-        <div className="glass-panel" style={{ padding: "1.25rem" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.75rem" }}>
-            <span style={{ fontWeight: 700, fontSize: "1rem", color: "#60a5fa" }}>Atlassian Jira REST API v3</span>
-            {isJiraConnected ? (
-              <span className="badge badge-confidence-high">🟢 Connected</span>
-            ) : (
-              <span className="badge" style={{ background: "rgba(255, 255, 255, 0.05)", color: "var(--text-muted)" }}>⚪ Disconnected</span>
-            )}
-          </div>
-          <p style={{ fontSize: "0.8rem", color: "var(--text-secondary)", lineHeight: 1.5 }}>
-            Atlassian Jira Cloud REST API v3 & Rovo MCP. Creates Bug, Story, and Task issues with Atlassian Document Format.
-          </p>
-          <div style={{ marginTop: "1rem", fontSize: "0.75rem", color: "var(--text-muted)" }}>
-            Protocol: <code>Jira REST v3 / ADF</code> • Target: <code>atlassian.net</code>
-          </div>
-        </div>
-
-        {/* Google Calendar */}
-        <div className="glass-panel" style={{ padding: "1.25rem" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.75rem" }}>
-            <span style={{ fontWeight: 700, fontSize: "1rem", color: "#34d399" }}>Google Calendar API v3</span>
-            {isCalendarConnected ? (
-              <span className="badge badge-confidence-high">🟢 Connected</span>
-            ) : (
-              <span className="badge" style={{ background: "rgba(255, 255, 255, 0.05)", color: "var(--text-muted)" }}>⚪ Disconnected</span>
-            )}
-          </div>
-          <p style={{ fontSize: "0.8rem", color: "var(--text-secondary)", lineHeight: 1.5 }}>
-            Google Calendar API v3 with attendee invitations, pop-up notifications, and timezone synchronization.
-          </p>
-          <div style={{ marginTop: "1rem", fontSize: "0.75rem", color: "var(--text-muted)" }}>
-            Protocol: <code>Google Calendar v3</code> • Target: <code>googleapis.com</code>
-          </div>
-        </div>
-
-        {/* Task Ledger */}
-        <div className="glass-panel" style={{ padding: "1.25rem", border: "1px solid rgba(245, 158, 11, 0.3)" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.75rem" }}>
-            <span style={{ fontWeight: 700, fontSize: "1rem", color: "#fbbf24" }}>Task Ledger (Custom Server)</span>
-            <span className="badge" style={{ background: "rgba(245, 158, 11, 0.2)", color: "#fbbf24" }}>⭐ Custom MCP (Active)</span>
-          </div>
-          <p style={{ fontSize: "0.8rem", color: "var(--text-secondary)", lineHeight: 1.5 }}>
-            Native FastMCP 2.x server backed by PostgreSQL. Provides standalone fallback task management when external tools are unmapped.
-          </p>
-          <div style={{ marginTop: "1rem", fontSize: "0.75rem", color: "var(--text-muted)" }}>
-            Protocol: <code>FastMCP 2.x</code> • Transport: <code>Native Async FastMCP</code>
-          </div>
-        </div>
+              <p className="dim" style={{ fontSize: "0.78rem", lineHeight: 1.5, marginBottom: "8px" }}>
+                {t.detail}
+              </p>
+              <span className="mono-label">{t.protocol.toUpperCase()}</span>
+            </div>
+          );
+        })}
       </div>
     </div>
   );

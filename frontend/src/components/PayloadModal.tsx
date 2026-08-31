@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { ActionItem, TargetTool } from "@/lib/types";
 
 interface PayloadModalProps {
@@ -20,7 +20,7 @@ export function PayloadModal({
 }: PayloadModalProps) {
   const [payload, setPayload] = useState<Record<string, unknown>>({ ...item.tool_payload });
 
-  React.useEffect(() => {
+  useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
     };
@@ -55,68 +55,76 @@ export function PayloadModal({
       style={{
         position: "fixed",
         inset: 0,
-        background: "rgba(0, 0, 0, 0.8)",
-        backdropFilter: "blur(12px)",
-        WebkitBackdropFilter: "blur(12px)",
+        background: "var(--bg-overlay)",
+        backdropFilter: "blur(8px)",
+        WebkitBackdropFilter: "blur(8px)",
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
         zIndex: 100,
-        padding: "1.5rem",
+        padding: "24px",
       }}
     >
       <div
-        className="card-elevated"
-        style={{
-          width: "100%",
-          maxWidth: "520px",
-          padding: "1.75rem",
-          border: "1px solid var(--border-medium)",
-          background: "var(--bg-elevated)",
-        }}
+        className="panel-elevated fade-in"
+        style={{ width: "100%", maxWidth: "480px", padding: "22px 24px" }}
+        role="dialog"
+        aria-modal="true"
+        aria-label={`Configure ${targetTool} payload`}
       >
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1.25rem" }}>
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "flex-start",
+            marginBottom: "18px",
+          }}
+        >
           <div>
-            <h3 style={{ fontSize: "1.1rem", fontWeight: 600, letterSpacing: "-0.02em", color: "#ffffff" }}>
-              Configure {targetTool.toUpperCase()} Payload
+            <h3 className="h-title" style={{ fontSize: "1.05rem" }}>
+              {targetTool === "task_ledger" ? "Task Ledger" : targetTool} payload
             </h3>
-            <p style={{ fontSize: "0.8rem", color: "var(--text-secondary)", marginTop: "0.15rem" }}>
-              Modify parameters before dispatching execution.
+            <p className="dim" style={{ fontSize: "0.8rem", marginTop: "3px" }}>
+              Adjust parameters before dispatch.
             </p>
           </div>
           <button
             onClick={onClose}
-            style={{
-              background: "transparent",
-              border: "none",
-              color: "var(--text-muted)",
-              cursor: "pointer",
-              fontSize: "1.1rem",
-            }}
+            className="btn btn-ghost btn-sm"
+            style={{ fontSize: "0.9rem", padding: "4px 10px" }}
+            aria-label="Close"
           >
-            ✕
+            Esc
           </button>
         </div>
 
-        <div style={{ display: "flex", flexDirection: "column", gap: "1rem", maxHeight: "60vh", overflowY: "auto" }}>
-          {/* JIRA FIELDS */}
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            gap: "14px",
+            maxHeight: "58vh",
+            overflowY: "auto",
+            paddingRight: "4px",
+          }}
+        >
+          {/* JIRA */}
           {targetTool === "jira" && (
             <>
               <div>
-                <label style={labelStyle}>Project Key</label>
+                <label className="field-label">Project key</label>
                 <input
-                  type="text"
+                  className="input mono"
                   value={str("project_key", "ENG")}
                   onChange={(e) => handleChange("project_key", e.target.value)}
-                  style={inputStyle}
                 />
               </div>
               <div>
-                <label style={labelStyle}>Issue Type</label>
+                <label className="field-label">Issue type</label>
                 <select
+                  className="select"
                   value={str("issue_type", "Task")}
                   onChange={(e) => handleChange("issue_type", e.target.value)}
-                  style={inputStyle}
                 >
                   <option value="Task">Task</option>
                   <option value="Bug">Bug</option>
@@ -124,20 +132,19 @@ export function PayloadModal({
                 </select>
               </div>
               <div>
-                <label style={labelStyle}>Summary / Title</label>
+                <label className="field-label">Summary</label>
                 <input
-                  type="text"
+                  className="input"
                   value={str("summary")}
                   onChange={(e) => handleChange("summary", e.target.value)}
-                  style={inputStyle}
                 />
               </div>
               <div>
-                <label style={labelStyle}>Priority</label>
+                <label className="field-label">Priority</label>
                 <select
+                  className="select"
                   value={str("priority", "Medium")}
                   onChange={(e) => handleChange("priority", e.target.value)}
-                  style={inputStyle}
                 >
                   <option value="Low">Low</option>
                   <option value="Medium">Medium</option>
@@ -148,109 +155,108 @@ export function PayloadModal({
             </>
           )}
 
-          {/* CALENDAR FIELDS */}
+          {/* CALENDAR */}
           {targetTool === "calendar" && (
             <>
               <div>
-                <label style={labelStyle}>Event Title</label>
+                <label className="field-label">Event title</label>
                 <input
-                  type="text"
+                  className="input"
                   value={str("title")}
                   onChange={(e) => handleChange("title", e.target.value)}
-                  style={inputStyle}
                 />
               </div>
               <div>
-                <label style={labelStyle}>Start Time (ISO)</label>
+                <label className="field-label">Start time (ISO 8601)</label>
                 <input
-                  type="text"
+                  className="input mono"
                   value={str("start_time")}
                   onChange={(e) => handleChange("start_time", e.target.value)}
-                  style={inputStyle}
+                  placeholder="2026-09-10T14:00:00Z"
                 />
               </div>
               <div>
-                <label style={labelStyle}>End Time (ISO)</label>
+                <label className="field-label">End time (ISO 8601)</label>
                 <input
-                  type="text"
+                  className="input mono"
                   value={str("end_time")}
                   onChange={(e) => handleChange("end_time", e.target.value)}
-                  style={inputStyle}
+                  placeholder="2026-09-10T15:00:00Z"
                 />
               </div>
               <div>
-                <label style={labelStyle}>Attendee Email</label>
+                <label className="field-label">Attendee email</label>
                 <input
-                  type="text"
+                  className="input mono"
                   value={Array.isArray(payload.attendees) ? String(payload.attendees[0] ?? "") : ""}
-                  onChange={(e) => handleChange("attendees", e.target.value ? [e.target.value] : [])}
+                  onChange={(e) =>
+                    handleChange("attendees", e.target.value ? [e.target.value] : [])
+                  }
                   placeholder="name@company.com"
-                  style={inputStyle}
                 />
               </div>
             </>
           )}
 
-          {/* NOTION FIELDS */}
+          {/* NOTION */}
           {targetTool === "notion" && (
             <>
               <div>
-                <label style={labelStyle}>Target Database ID</label>
+                <label className="field-label">Database ID</label>
                 <input
-                  type="text"
+                  className="input mono"
                   value={str("database_id", "roadmap_db")}
                   onChange={(e) => handleChange("database_id", e.target.value)}
-                  style={inputStyle}
                 />
               </div>
               <div>
-                <label style={labelStyle}>Page Title</label>
+                <label className="field-label">Page title</label>
                 <input
-                  type="text"
+                  className="input"
                   value={str("title")}
                   onChange={(e) => handleChange("title", e.target.value)}
-                  style={inputStyle}
                 />
               </div>
               <div>
-                <label style={labelStyle}>Details / Context</label>
+                <label className="field-label">Details</label>
                 <textarea
+                  className="input"
+                  style={{ resize: "vertical" }}
+                  rows={3}
                   value={str("details") || str("description")}
                   onChange={(e) => handleChange("details", e.target.value)}
-                  rows={3}
-                  style={inputStyle}
                 />
               </div>
             </>
           )}
 
-          {/* TASK LEDGER FIELDS */}
+          {/* TASK LEDGER */}
           {targetTool === "task_ledger" && (
             <>
               <div>
-                <label style={labelStyle}>Task Title</label>
+                <label className="field-label">Task title</label>
                 <input
-                  type="text"
+                  className="input"
                   value={str("title")}
                   onChange={(e) => handleChange("title", e.target.value)}
-                  style={inputStyle}
                 />
               </div>
               <div>
-                <label style={labelStyle}>Notes</label>
+                <label className="field-label">Notes</label>
                 <textarea
+                  className="input"
+                  style={{ resize: "vertical" }}
+                  rows={3}
                   value={str("notes")}
                   onChange={(e) => handleChange("notes", e.target.value)}
-                  rows={3}
-                  style={inputStyle}
                 />
               </div>
               <div>
-                <label style={labelStyle}>Priority</label>
+                <label className="field-label">Priority</label>
                 <select
+                  className="select"
                   value={str("priority", "medium")}
                   onChange={(e) => handleChange("priority", e.target.value)}
-                  style={inputStyle}
                 >
                   <option value="low">Low</option>
                   <option value="medium">Medium</option>
@@ -261,47 +267,24 @@ export function PayloadModal({
           )}
         </div>
 
-        {/* Modal Buttons */}
-        <div style={{ display: "flex", justifyContent: "flex-end", gap: "0.5rem", marginTop: "1.5rem" }}>
-          <button
-            type="button"
-            className="btn btn-secondary"
-            onClick={onClose}
-            style={{ fontSize: "0.85rem" }}
-          >
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "flex-end",
+            gap: "10px",
+            marginTop: "20px",
+            paddingTop: "16px",
+            borderTop: "1px solid var(--line)",
+          }}
+        >
+          <button type="button" className="btn btn-secondary" onClick={onClose}>
             Cancel
           </button>
-          <button
-            type="button"
-            className="btn btn-primary"
-            onClick={handleSave}
-            style={{ fontSize: "0.85rem" }}
-          >
-            Save Changes
+          <button type="button" className="btn btn-primary" onClick={handleSave}>
+            Save changes
           </button>
         </div>
       </div>
     </div>
   );
 }
-
-const labelStyle: React.CSSProperties = {
-  display: "block",
-  fontSize: "0.75rem",
-  fontWeight: 600,
-  color: "var(--text-secondary)",
-  marginBottom: "0.35rem",
-  letterSpacing: "-0.01em",
-};
-
-const inputStyle: React.CSSProperties = {
-  width: "100%",
-  padding: "0.45rem 0.75rem",
-  borderRadius: "6px",
-  background: "rgba(0, 0, 0, 0.4)",
-  border: "1px solid var(--border-subtle)",
-  color: "var(--text-primary)",
-  fontSize: "0.85rem",
-  outline: "none",
-  fontFamily: "inherit",
-};

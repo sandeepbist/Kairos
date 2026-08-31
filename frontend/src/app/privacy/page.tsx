@@ -10,29 +10,30 @@ export default function PrivacyPage() {
   return (
     <div className="container" style={{ maxWidth: "920px", paddingTop: "2rem", paddingBottom: "8rem" }}>
       <div style={{ marginBottom: "2.5rem" }}>
-        <Link href="/" style={{ color: "var(--text-muted)", fontSize: "0.85rem", textDecoration: "none" }}>
+        <Link href="/" className="link-quiet mono-label">
           ← Back to Dashboard
         </Link>
-        <h1 className="heading-display" style={{ marginTop: "1rem", marginBottom: "0.5rem" }}>
+        <h1 className="h-display" style={{ marginTop: "1rem", marginBottom: "0.5rem" }}>
           Privacy Policy
         </h1>
-        <p style={{ color: "var(--text-secondary)", fontSize: "0.9rem" }}>
+        <p className="dim" style={{ fontSize: "0.82rem" }}>
           Effective Date: August 27, 2026 • Enterprise Data Protection & Security Policy (Version 2.4)
         </p>
       </div>
 
       <div
+        className="prose-legal"
         style={{
           display: "flex",
           flexDirection: "column",
-          gap: "2.25rem",
+          gap: "12px",
           color: "var(--text-secondary)",
-          lineHeight: 1.75,
-          fontSize: "0.95rem",
+          lineHeight: 1.7,
+          fontSize: "0.9rem",
         }}
       >
-        <section className="card-panel" style={{ padding: "2rem" }}>
-          <h2 style={{ color: "#ffffff", fontSize: "1.2rem", fontWeight: 600, marginBottom: "0.75rem" }}>
+        <section className="panel" style={{ padding: "22px 26px" }}>
+          <h2 className="h-section" style={{ marginBottom: "10px" }}>
             1. Core Privacy Commitment & Zero Data Sale
           </h2>
           <p>
@@ -43,14 +44,14 @@ export default function PrivacyPage() {
           </p>
         </section>
 
-        <section className="card-panel" style={{ padding: "2rem" }}>
-          <h2 style={{ color: "#ffffff", fontSize: "1.2rem", fontWeight: 600, marginBottom: "0.75rem" }}>
+        <section className="panel" style={{ padding: "22px 26px" }}>
+          <h2 className="h-section" style={{ marginBottom: "10px" }}>
             2. Scope & Categories of Information Processed
           </h2>
           <p>
             The Service processes information strictly necessary to fulfill action extraction, human verification, and tool dispatch workflows:
           </p>
-          <ul style={{ paddingLeft: "1.5rem", display: "flex", flexDirection: "column", gap: "0.6rem", marginTop: "0.75rem" }}>
+          <ul style={{ marginTop: "4px" }}>
             <li>
               <strong>Unstructured Source Data:</strong> Text transcripts, email threads, chat logs, or meeting notes submitted via the API or frontend for reasoning and parsing.
             </li>
@@ -69,16 +70,16 @@ export default function PrivacyPage() {
           </ul>
         </section>
 
-        <section className="card-panel" style={{ padding: "2rem" }}>
-          <h2 style={{ color: "#ffffff", fontSize: "1.2rem", fontWeight: 600, marginBottom: "0.75rem" }}>
+        <section className="panel" style={{ padding: "22px 26px" }}>
+          <h2 className="h-section" style={{ marginBottom: "10px" }}>
             3. AI & Large Language Model (LLM) Processing Hygiene
           </h2>
           <p>
             When processing source content through foundation models (including Google Gemini and OpenAI):
           </p>
-          <ul style={{ paddingLeft: "1.5rem", display: "flex", flexDirection: "column", gap: "0.6rem", marginTop: "0.75rem" }}>
+          <ul style={{ marginTop: "4px" }}>
             <li>
-              <strong>Prompt Injection Guardrails:</strong> All source text is sanitized, length-checked (3,000 token maximum), and encapsulated inside structured XML delimiters (<code style={{ color: "#38bdf8" }}>&lt;untrusted_source_content&gt;</code>) to prevent prompt injection or instruction hijacking.
+              <strong>Prompt Injection Guardrails:</strong> All source text is sanitized, length-checked (3,000 token maximum), and encapsulated inside structured XML delimiters (<code >&lt;untrusted_source_content&gt;</code>) to prevent prompt injection or instruction hijacking.
             </li>
             <li>
               <strong>Transient Structured Inference:</strong> Transcripts are transmitted over encrypted TLS 1.3 tunnels strictly for one-shot structured Pydantic extraction.
@@ -89,14 +90,14 @@ export default function PrivacyPage() {
           </ul>
         </section>
 
-        <section className="card-panel" style={{ padding: "2rem" }}>
-          <h2 style={{ color: "#ffffff", fontSize: "1.2rem", fontWeight: 600, marginBottom: "0.75rem" }}>
+        <section className="panel" style={{ padding: "22px 26px" }}>
+          <h2 className="h-section" style={{ marginBottom: "10px" }}>
             4. Cryptographic Token Vault & Data Storage Architecture
           </h2>
           <p>
             All persistent data is managed within isolated database layers:
           </p>
-          <ul style={{ paddingLeft: "1.5rem", display: "flex", flexDirection: "column", gap: "0.6rem", marginTop: "0.75rem" }}>
+          <ul style={{ marginTop: "4px" }}>
             <li>
               <strong>AES-256 Encryption at Rest:</strong> OAuth tokens for Notion, Jira, and Google Calendar are stored in PostgreSQL using Fernet AES-256 CBC encryption with HMAC authentication.
             </li>
@@ -109,14 +110,14 @@ export default function PrivacyPage() {
           </ul>
         </section>
 
-        <section className="card-panel" style={{ padding: "2rem" }}>
-          <h2 style={{ color: "#ffffff", fontSize: "1.2rem", fontWeight: 600, marginBottom: "0.75rem" }}>
+        <section className="panel" style={{ padding: "22px 26px" }}>
+          <h2 className="h-section" style={{ marginBottom: "10px" }}>
             5. Automated Data Lifecycle & Retention Policies
           </h2>
           <p>
             To prevent stale data accumulation:
           </p>
-          <ul style={{ paddingLeft: "1.5rem", display: "flex", flexDirection: "column", gap: "0.6rem", marginTop: "0.75rem" }}>
+          <ul style={{ marginTop: "4px" }}>
             <li>
               <strong>7-Day Auto-Archive Lifecycle:</strong> Ingestion batches awaiting human verification that remain untouched for seven (7) consecutive days are automatically timed out and archived by Temporal workflow policies.
             </li>
@@ -126,14 +127,14 @@ export default function PrivacyPage() {
           </ul>
         </section>
 
-        <section className="card-panel" style={{ padding: "2rem" }}>
-          <h2 style={{ color: "#ffffff", fontSize: "1.2rem", fontWeight: 600, marginBottom: "0.75rem" }}>
+        <section className="panel" style={{ padding: "22px 26px" }}>
+          <h2 className="h-section" style={{ marginBottom: "10px" }}>
             6. Sub-processors & Third-Party Service Providers
           </h2>
           <p>
             Depending on your deployment mode and configured credentials, the Service may transmit data to the following service providers:
           </p>
-          <ul style={{ paddingLeft: "1.5rem", display: "flex", flexDirection: "column", gap: "0.6rem", marginTop: "0.75rem" }}>
+          <ul style={{ marginTop: "4px" }}>
             <li><strong>Atlassian Corporation:</strong> Jira Cloud REST API v3 for ticket creation.</li>
             <li><strong>Notion Labs, Inc.:</strong> Notion API v1 for workspace database page generation.</li>
             <li><strong>Google LLC:</strong> Google Calendar API v3 for event scheduling & Google Generative AI for structured LLM inference.</li>
@@ -141,14 +142,14 @@ export default function PrivacyPage() {
           </ul>
         </section>
 
-        <section className="card-panel" style={{ padding: "2rem" }}>
-          <h2 style={{ color: "#ffffff", fontSize: "1.2rem", fontWeight: 600, marginBottom: "0.75rem" }}>
+        <section className="panel" style={{ padding: "22px 26px" }}>
+          <h2 className="h-section" style={{ marginBottom: "10px" }}>
             7. Global Compliance: GDPR, UK GDPR, & CCPA/CPRA Rights
           </h2>
           <p>
             If you reside in the European Economic Area (EEA), United Kingdom, or California, you possess statutory rights regarding your personal data, including:
           </p>
-          <ul style={{ paddingLeft: "1.5rem", display: "flex", flexDirection: "column", gap: "0.6rem", marginTop: "0.75rem" }}>
+          <ul style={{ marginTop: "4px" }}>
             <li><strong>Right to Access & Portability:</strong> The right to request copies of your stored data and execution logs.</li>
             <li><strong>Right to Rectification:</strong> The right to correct inaccurate or incomplete metadata.</li>
             <li><strong>Right to Erasure (&ldquo;Right to be Forgotten&rdquo;):</strong> The right to request full purging of your batches and cryptographic audit trails.</li>
@@ -156,8 +157,8 @@ export default function PrivacyPage() {
           </ul>
         </section>
 
-        <section className="card-panel" style={{ padding: "2rem" }}>
-          <h2 style={{ color: "#ffffff", fontSize: "1.2rem", fontWeight: 600, marginBottom: "0.75rem" }}>
+        <section className="panel" style={{ padding: "22px 26px" }}>
+          <h2 className="h-section" style={{ marginBottom: "10px" }}>
             8. Security Measures & Incident Notification
           </h2>
           <p>
@@ -165,8 +166,8 @@ export default function PrivacyPage() {
           </p>
         </section>
 
-        <section className="card-panel" style={{ padding: "2rem" }}>
-          <h2 style={{ color: "#ffffff", fontSize: "1.2rem", fontWeight: 600, marginBottom: "0.75rem" }}>
+        <section className="panel" style={{ padding: "22px 26px" }}>
+          <h2 className="h-section" style={{ marginBottom: "10px" }}>
             9. Changes to this Privacy Policy
           </h2>
           <p>

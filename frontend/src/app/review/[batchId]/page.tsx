@@ -24,7 +24,6 @@ export default function ReviewPage({
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Poll batch status until awaiting_approval
   useEffect(() => {
     const fetchStatus = async () => {
       try {
@@ -96,7 +95,7 @@ export default function ReviewPage({
       updated[item.id] = {
         item_id: item.id,
         action: isHigh ? "APPROVE" : "REJECT",
-        rejection_reason: isHigh ? undefined : "Flagged for manual review",
+        rejection_reason: isHigh ? undefined : "Below confidence threshold",
       };
     });
     setDecisions(updated);
@@ -132,94 +131,87 @@ export default function ReviewPage({
 
   if (loading && (!batch || batch.status === "processing")) {
     return (
-      <div className="container" style={{ textAlign: "center", padding: "8rem 0" }}>
-        <div style={{ fontSize: "2rem", marginBottom: "1rem" }}>⚡</div>
-        <h2 style={{ fontSize: "1.25rem", fontWeight: 600, color: "#ffffff" }}>
-          Extracting & Routing Action Items...
-        </h2>
-        <p style={{ color: "var(--text-secondary)", fontSize: "0.9rem", marginTop: "0.5rem" }}>
-          Analyzing commitments, speakers, verbatim quotes, and tool targets.
-        </p>
+      <div className="container" style={{ maxWidth: "760px" }}>
+        <div style={{ marginBottom: "36px", display: "flex", alignItems: "center", gap: "12px" }}>
+          <span className="spinner" />
+          <div>
+            <p className="h-title">Extracting actions</p>
+            <p className="dim" style={{ fontSize: "0.84rem", marginTop: "2px" }}>
+              Identifying commitments, speakers, and routing targets.
+            </p>
+          </div>
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+          <div className="skeleton" style={{ height: "132px", borderRadius: "var(--r-lg)" }} />
+          <div className="skeleton" style={{ height: "132px", borderRadius: "var(--r-lg)" }} />
+          <div className="skeleton" style={{ height: "132px", borderRadius: "var(--r-lg)" }} />
+        </div>
       </div>
     );
   }
 
   const approvedCount = Object.values(decisions).filter((d) => d.action !== "REJECT").length;
   const rejectedCount = Object.values(decisions).filter((d) => d.action === "REJECT").length;
+  const isAwaiting = batch?.status === "awaiting_approval";
 
   return (
-    <div className="container" style={{ maxWidth: "1280px", paddingBottom: "8rem" }}>
-      {/* Top Banner */}
+    <div className="container" style={{ maxWidth: "1240px" }}>
+      {/* Header */}
       <div
+        className="rise"
         style={{
           display: "flex",
           justifyContent: "space-between",
-          alignItems: "center",
-          marginBottom: "1.75rem",
+          alignItems: "flex-end",
+          marginBottom: "26px",
           flexWrap: "wrap",
-          gap: "1rem",
+          gap: "16px",
         }}
       >
         <div>
-          <div style={{ display: "flex", alignItems: "center", gap: "0.6rem" }}>
-            <h1 className="heading-title">Human Verification Workbench</h1>
-            <span className="pill" style={{ fontSize: "0.75rem" }}>
-              Batch {batchId.slice(0, 8)}
-            </span>
-          </div>
-          <p style={{ color: "var(--text-secondary)", fontSize: "0.85rem", marginTop: "0.25rem" }}>
-            Hover over any action item to view its synchronized quote in the original transcript.
+          <p className="mono-label" style={{ marginBottom: "8px" }}>
+            BATCH {batchId.slice(0, 8)}
+          </p>
+          <h1 className="h-title" style={{ fontSize: "1.4rem" }}>
+            Review extracted actions
+          </h1>
+          <p className="dim" style={{ fontSize: "0.84rem", marginTop: "4px" }}>
+            Hover a card to locate its quote in the source. Nothing executes until you approve.
           </p>
         </div>
 
-        {/* Quick Bulk Action Buttons */}
-        <div style={{ display: "flex", gap: "0.4rem", flexWrap: "wrap" }}>
-          <button
-            type="button"
-            className="btn btn-secondary"
-            onClick={handleApproveHighConfidence}
-            style={{ fontSize: "0.75rem", padding: "0.35rem 0.75rem" }}
-          >
-            Approve High Confidence (&ge;85%)
-          </button>
-          <button
-            type="button"
-            className="btn btn-secondary"
-            onClick={handleApproveAll}
-            style={{ fontSize: "0.75rem", padding: "0.35rem 0.75rem" }}
-          >
-            Approve All ({batch?.items.length || 0})
-          </button>
-          <button
-            type="button"
-            className="btn btn-secondary"
-            onClick={handleRejectAll}
-            style={{ fontSize: "0.75rem", padding: "0.35rem 0.75rem" }}
-          >
-            Dismiss All
-          </button>
-        </div>
+        {isAwaiting && (
+          <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+            <button type="button" className="btn btn-secondary btn-sm" onClick={handleApproveHighConfidence}>
+              Approve high confidence
+            </button>
+            <button type="button" className="btn btn-secondary btn-sm" onClick={handleApproveAll}>
+              Approve all
+            </button>
+            <button type="button" className="btn btn-secondary btn-sm" onClick={handleRejectAll}>
+              Dismiss all
+            </button>
+          </div>
+        )}
       </div>
 
       {error && (
-        <div
-          style={{
-            padding: "0.75rem 1rem",
-            borderRadius: "8px",
-            background: "rgba(244, 63, 94, 0.1)",
-            border: "1px solid rgba(244, 63, 94, 0.25)",
-            color: "#fb7185",
-            fontSize: "0.85rem",
-            marginBottom: "1.5rem",
-          }}
-        >
+        <div className="notice notice-error" style={{ marginBottom: "20px" }}>
           {error}
         </div>
       )}
 
-      {/* Split Workbench Grid */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1.25fr", gap: "1.5rem", alignItems: "start" }}>
-        {/* Left Column: Source Transcript Viewer */}
+      {/* Workbench grid */}
+      <div
+        className="rise rise-1"
+        style={{
+          display: "grid",
+          gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1.25fr)",
+          gap: "18px",
+          alignItems: "start",
+        }}
+      >
+        {/* Left: source */}
         <div style={{ position: "sticky", top: "80px" }}>
           {batch && (
             <SourceSnippetViewer
@@ -230,17 +222,8 @@ export default function ReviewPage({
           )}
         </div>
 
-        {/* Right Column: Action Item Candidate Cards */}
-        <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", paddingBottom: "0.5rem" }}>
-            <span style={{ fontSize: "0.85rem", fontWeight: 600, color: "#ffffff" }}>
-              Extracted Action Items ({batch?.items.length || 0})
-            </span>
-            <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>
-              {approvedCount} selected for execution
-            </span>
-          </div>
-
+        {/* Right: cards */}
+        <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
           {batch?.items.map((item) => (
             <ActionCard
               key={item.id}
@@ -248,63 +231,67 @@ export default function ReviewPage({
               decision={decisions[item.id]}
               onDecisionChange={handleDecisionChange}
               onHoverSnippet={setHoveredSnippet}
-              isHighlighted={
-                Boolean(
-                  hoveredSnippet &&
-                    item.source_snippet &&
-                    (hoveredSnippet === item.source_snippet ||
-                      hoveredSnippet.includes(item.source_snippet) ||
-                      item.source_snippet.includes(hoveredSnippet))
-                )
-              }
+              isHighlighted={Boolean(
+                hoveredSnippet &&
+                  item.source_snippet &&
+                  (hoveredSnippet === item.source_snippet ||
+                    hoveredSnippet.includes(item.source_snippet) ||
+                    item.source_snippet.includes(hoveredSnippet))
+              )}
             />
           ))}
         </div>
       </div>
 
-      {/* Sticky Bottom Execution Bar */}
-      <div
-        style={{
-          position: "fixed",
-          bottom: "1.5rem",
-          left: "50%",
-          transform: "translateX(-50%)",
-          zIndex: 40,
-          width: "calc(100% - 3rem)",
-          maxWidth: "800px",
-          background: "rgba(17, 17, 17, 0.9)",
-          border: "1px solid var(--border-medium)",
-          borderRadius: "12px",
-          padding: "0.75rem 1.25rem",
-          backdropFilter: "blur(20px)",
-          WebkitBackdropFilter: "blur(20px)",
-          boxShadow: "0 10px 30px rgba(0, 0, 0, 0.8)",
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-        }}
-      >
-        <div style={{ display: "flex", gap: "1.25rem", fontSize: "0.85rem" }}>
-          <span>
-            Approved: <strong style={{ color: "#34d399" }}>{approvedCount}</strong>
-          </span>
-          <span>
-            Dismissed: <strong style={{ color: "#fb7185" }}>{rejectedCount}</strong>
-          </span>
-        </div>
-
-        <button
-          type="button"
-          onClick={handleSubmitApprovals}
-          disabled={submitting || approvedCount === 0}
-          className="btn btn-primary"
-          style={{ padding: "0.55rem 1.25rem", fontSize: "0.875rem" }}
+      {/* Sticky execution bar */}
+      {isAwaiting && (
+        <div
+          className="fade-in"
+          style={{
+            position: "fixed",
+            bottom: "20px",
+            left: "50%",
+            transform: "translateX(-50%)",
+            zIndex: 40,
+            width: "min(560px, calc(100% - 32px))",
+            background: "var(--bg-raised)",
+            border: "1px solid var(--line-strong)",
+            borderRadius: "var(--r-lg)",
+            padding: "10px 10px 10px 18px",
+            backdropFilter: "blur(14px)",
+            WebkitBackdropFilter: "blur(14px)",
+            boxShadow: "0 16px 48px -12px rgba(0, 0, 0, 0.8)",
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            gap: "14px",
+          }}
         >
-          {submitting
-            ? "Executing side-effects..."
-            : `Execute ${approvedCount} Approved ${approvedCount === 1 ? "Action" : "Actions"} →`}
-        </button>
-      </div>
+          <div style={{ display: "flex", gap: "18px", fontSize: "0.82rem" }} className="muted">
+            <span>
+              <strong style={{ color: "var(--ok)", fontWeight: 580 }}>{approvedCount}</strong> approved
+            </span>
+            <span>
+              <strong style={{ color: "var(--err)", fontWeight: 580 }}>{rejectedCount}</strong> dismissed
+            </span>
+          </div>
+
+          <button
+            type="button"
+            onClick={handleSubmitApprovals}
+            disabled={submitting || approvedCount === 0}
+            className="btn btn-primary"
+          >
+            {submitting ? (
+              <>
+                <span className="spinner" /> Executing
+              </>
+            ) : (
+              `Execute ${approvedCount} ${approvedCount === 1 ? "action" : "actions"}`
+            )}
+          </button>
+        </div>
+      )}
     </div>
   );
 }

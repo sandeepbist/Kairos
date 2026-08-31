@@ -12,6 +12,16 @@ interface ActionCardProps {
   isHighlighted?: boolean;
 }
 
+const TOOL_NAMES: Record<TargetTool, string> = {
+  jira: "Jira",
+  calendar: "Calendar",
+  notion: "Notion",
+  task_ledger: "Ledger",
+};
+
+const CONFIDENCE_TIER = (c: number): "high" | "mid" | "low" =>
+  c >= 0.85 ? "high" : c >= 0.7 ? "mid" : "low";
+
 export function ActionCard({
   item,
   decision,
@@ -28,6 +38,8 @@ export function ActionCard({
   const [isModalOpen, setIsModalOpen] = useState(false);
 
   const currentAction = decision?.action || "APPROVE";
+  const rejected = currentAction === "REJECT";
+  const tier = CONFIDENCE_TIER(item.confidence);
 
   const handleToolChange = (newTool: TargetTool) => {
     setSelectedTool(newTool);
@@ -66,133 +78,131 @@ export function ActionCard({
     });
   };
 
-  const getToolPillClass = (tool: string) => {
-    if (tool === "notion") return "pill pill-notion";
-    if (tool === "jira") return "pill pill-jira";
-    if (tool === "calendar") return "pill pill-calendar";
-    return "pill pill-task_ledger";
-  };
-
   return (
     <div
-      className="card-panel"
+      className="panel panel-hover rise"
       onMouseEnter={() => onHoverSnippet(item.source_snippet)}
       onMouseLeave={() => onHoverSnippet(null)}
       style={{
-        padding: "1.25rem",
-        border: isHighlighted
-          ? "1px solid #06b6d4"
-          : currentAction === "REJECT"
-          ? "1px solid rgba(244, 63, 94, 0.3)"
-          : "1px solid var(--border-subtle)",
-        background: currentAction === "REJECT"
-          ? "rgba(244, 63, 94, 0.03)"
-          : isHighlighted
-          ? "var(--bg-surface-hover)"
-          : "var(--bg-surface)",
-        transition: "all 0.15s ease",
-        display: "flex",
-        flexDirection: "column",
-        gap: "0.85rem",
+        padding: "18px 20px",
+        opacity: rejected ? 0.55 : 1,
+        borderColor: isHighlighted
+          ? "var(--line-focus)"
+          : rejected
+            ? "rgba(248, 113, 113, 0.25)"
+            : undefined,
+        transition:
+          "opacity var(--fast) var(--ease), border-color var(--fast) var(--ease), background-color var(--fast) var(--ease)",
       }}
     >
-      {/* Top Header */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "0.5rem" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-          {/* Tool Selector */}
-          <select
-            value={selectedTool}
-            onChange={(e) => handleToolChange(e.target.value as TargetTool)}
-            className={getToolPillClass(selectedTool)}
-            style={{
-              padding: "0.2rem 0.5rem",
-              fontSize: "0.75rem",
-              fontWeight: 600,
-              cursor: "pointer",
-              outline: "none",
-            }}
-          >
-            <option value="jira">Jira Issue</option>
-            <option value="calendar">Google Calendar</option>
-            <option value="notion">Notion Page</option>
-            <option value="task_ledger">Task Ledger</option>
-          </select>
-
-          <span style={{ fontSize: "0.75rem", color: "var(--text-muted)", textTransform: "capitalize" }}>
-            {item.actionability_type.replace("_", " ")}
-          </span>
-        </div>
-
-        {/* Confidence Pill */}
-        <div className="pill" style={{ fontSize: "0.7rem", color: item.confidence >= 0.85 ? "#34d399" : item.confidence >= 0.7 ? "#fbbf24" : "#fb7185" }}>
-          <span className={`dot ${item.confidence >= 0.85 ? "dot-green" : item.confidence >= 0.7 ? "dot-amber" : "dot-rose"}`} />
-          <span>{Math.round(item.confidence * 100)}% Confidence</span>
-        </div>
-      </div>
-
-      {/* Task Description */}
-      <p style={{ fontSize: "0.925rem", fontWeight: 500, color: "#ffffff", lineHeight: 1.45 }}>
-        {item.description}
-      </p>
-
-      {/* Metadata Tags */}
-      <div style={{ display: "flex", gap: "0.4rem", flexWrap: "wrap", alignItems: "center", fontSize: "0.75rem" }}>
-        {item.speaker && (
-          <span className="pill" style={{ fontSize: "0.7rem" }}>
-            Speaker: <strong style={{ color: "#ffffff", marginLeft: "0.2rem" }}>{item.speaker}</strong>
-          </span>
-        )}
-        {item.suggested_assignee && (
-          <span className="pill" style={{ fontSize: "0.7rem" }}>
-            Assignee: <strong style={{ color: "#ffffff", marginLeft: "0.2rem" }}>{item.suggested_assignee}</strong>
-          </span>
-        )}
-        <span className="pill" style={{ fontSize: "0.7rem", textTransform: "capitalize" }}>
-          Priority: {item.priority}
-        </span>
-      </div>
-
-      {/* Action Decision Controls */}
+      {/* Row 1: tool + type | confidence meter */}
       <div
         style={{
           display: "flex",
           justifyContent: "space-between",
           alignItems: "center",
-          paddingTop: "0.75rem",
-          borderTop: "1px solid var(--border-subtle)",
-          marginTop: "0.25rem",
+          gap: "12px",
+          flexWrap: "wrap",
         }}
       >
-        <button
-          type="button"
-          className="btn btn-ghost"
-          onClick={() => setIsModalOpen(true)}
-          style={{ fontSize: "0.75rem", padding: "0.25rem 0.5rem" }}
-        >
-          Customize Payload →
+        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+          <select
+            value={selectedTool}
+            onChange={(e) => handleToolChange(e.target.value as TargetTool)}
+            className={`tag tag-tool tag-${selectedTool}`}
+            style={{ cursor: "pointer", outline: "none" }}
+            aria-label="Target tool"
+          >
+            {(Object.keys(TOOL_NAMES) as TargetTool[]).map((t) => (
+              <option key={t} value={t} style={{ color: "var(--text)", background: "var(--bg-surface)" }}>
+                {TOOL_NAMES[t]}
+              </option>
+            ))}
+          </select>
+          <span className="mono-label">
+            {item.actionability_type.replace("_", " ").toUpperCase()}
+          </span>
+        </div>
+
+        <div className="meter" title={`Extraction confidence: ${Math.round(item.confidence * 100)}%`}>
+          <div className="meter-track">
+            <div
+              className={`meter-fill ${tier}`}
+              style={{ width: `${Math.round(item.confidence * 100)}%` }}
+            />
+          </div>
+          <span className="meter-value">{Math.round(item.confidence * 100)}%</span>
+        </div>
+      </div>
+
+      {/* Row 2: description */}
+      <p
+        style={{
+          fontSize: "0.94rem",
+          fontWeight: 480,
+          color: "var(--text)",
+          lineHeight: 1.5,
+          margin: "12px 0 10px",
+          textDecoration: rejected ? "line-through" : undefined,
+          textDecorationColor: "var(--text-dim)",
+        }}
+      >
+        {item.description}
+      </p>
+
+      {/* Row 3: metadata */}
+      <div style={{ display: "flex", gap: "7px", flexWrap: "wrap", alignItems: "center" }}>
+        {item.speaker && (
+          <span className="tag">
+            <span className="mono-label" style={{ color: "var(--text-dim)" }}>SPEAKER</span>
+            {item.speaker}
+          </span>
+        )}
+        {item.suggested_assignee && (
+          <span className="tag">
+            <span className="mono-label" style={{ color: "var(--text-dim)" }}>ASSIGNEE</span>
+            {item.suggested_assignee}
+          </span>
+        )}
+        <span className="tag">
+          <span className="mono-label" style={{ color: "var(--text-dim)" }}>PRIORITY</span>
+          <span style={{ textTransform: "capitalize" }}>{item.priority}</span>
+        </span>
+      </div>
+
+      {/* Row 4: actions */}
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          marginTop: "14px",
+          paddingTop: "12px",
+          borderTop: "1px solid var(--line)",
+        }}
+      >
+        <button type="button" className="btn btn-ghost btn-sm" onClick={() => setIsModalOpen(true)}>
+          Edit payload
         </button>
 
-        <div style={{ display: "flex", gap: "0.4rem" }}>
+        <div style={{ display: "flex", gap: "8px" }}>
           <button
             type="button"
             onClick={handleReject}
-            className={`btn ${currentAction === "REJECT" ? "btn-danger" : "btn-secondary"}`}
-            style={{ fontSize: "0.75rem", padding: "0.3rem 0.75rem" }}
+            className={`btn btn-sm ${rejected ? "btn-danger" : "btn-secondary"}`}
           >
-            {currentAction === "REJECT" ? "Dismissed" : "Dismiss"}
+            {rejected ? "Dismissed" : "Dismiss"}
           </button>
           <button
             type="button"
             onClick={handleApprove}
-            className={`btn ${currentAction !== "REJECT" ? "btn-success" : "btn-secondary"}`}
-            style={{ fontSize: "0.75rem", padding: "0.3rem 0.75rem" }}
+            className={`btn btn-sm ${!rejected ? "btn-success" : "btn-secondary"}`}
           >
-            {currentAction !== "REJECT" ? "✓ Approved" : "Approve"}
+            {!rejected ? "Approved" : "Approve"}
           </button>
         </div>
       </div>
 
-      {/* Payload Modal */}
       <PayloadModal
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}

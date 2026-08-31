@@ -17,76 +17,46 @@ export function SourceSnippetViewer({
 
   return (
     <div
-      className="card-panel"
-      style={{
-        display: "flex",
-        flexDirection: "column",
-        height: "100%",
-        maxHeight: "calc(100vh - 200px)",
-        overflow: "hidden",
-      }}
+      className="panel"
+      style={{ display: "flex", flexDirection: "column", height: "100%", maxHeight: "calc(100vh - 220px)" }}
     >
       {/* Header */}
       <div
         style={{
-          padding: "0.85rem 1.25rem",
-          borderBottom: "1px solid var(--border-subtle)",
+          padding: "12px 18px",
+          borderBottom: "1px solid var(--line)",
           display: "flex",
           justifyContent: "space-between",
           alignItems: "center",
-          background: "rgba(0, 0, 0, 0.4)",
+          background: "var(--bg-raised)",
+          borderRadius: "var(--r-lg) var(--r-lg) 0 0",
         }}
       >
-        <span style={{ fontSize: "0.85rem", fontWeight: 600, color: "#ffffff" }}>
-          Source Transcript
-        </span>
-        <span
-          className="pill"
-          style={{ fontSize: "0.7rem", textTransform: "uppercase" }}
-        >
-          {sourceType.replace("_", " ")}
-        </span>
+        <span className="h-section">Source</span>
+        <span className="mono-label">{sourceType.replace(/_/g, " ").toUpperCase()}</span>
       </div>
 
-      {/* Transcript Content with Synchronized Highlighting */}
+      {/* Transcript with synchronized highlighting */}
       <div
         style={{
-          padding: "1rem",
+          padding: "12px 8px",
           overflowY: "auto",
           display: "flex",
           flexDirection: "column",
-          gap: "0.25rem",
-          fontFamily: "var(--font-mono)",
-          fontSize: "0.85rem",
-          lineHeight: 1.6,
+          gap: "2px",
         }}
       >
         {lines.map((line, idx) => {
-          const isHighlighted = Boolean(
+          const isActive = Boolean(
             activeSnippet &&
               line.trim() &&
               (line.includes(activeSnippet) || activeSnippet.includes(line.trim()))
           );
 
           return (
-            <div
-              key={idx}
-              className={`source-line ${isHighlighted ? "highlighted" : ""}`}
-              style={{ whiteSpace: "pre-wrap", wordBreak: "break-word" }}
-            >
-              <span
-                style={{
-                  color: "var(--text-dim)",
-                  fontSize: "0.75rem",
-                  marginRight: "0.75rem",
-                  userSelect: "none",
-                  display: "inline-block",
-                  minWidth: "20px",
-                }}
-              >
-                {idx + 1}
-              </span>
-              {line}
+            <div key={idx} className={`source-line ${isActive ? "is-active" : ""}`}>
+              <span className="source-line-no">{idx + 1}</span>
+              <span>{line || " "}</span>
             </div>
           );
         })}

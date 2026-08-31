@@ -4,7 +4,16 @@ import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import { getHistory } from "@/lib/api";
 import { errorMessage } from "@/lib/errors";
-import { HistoryBatch } from "@/lib/types";
+import { HistoryBatch, TargetTool } from "@/lib/types";
+
+const STATUS_LABEL: Record<string, { label: string; className: string }> = {
+  completed: { label: "Completed", className: "status-on" },
+  executing: { label: "Executing", className: "status-warn status-live" },
+  awaiting_approval: { label: "Awaiting review", className: "status-warn" },
+  expired: { label: "Expired", className: "status-off" },
+  failed: { label: "Failed", className: "status-err" },
+  processing: { label: "Processing", className: "status-warn status-live" },
+};
 
 export default function HistoryPage() {
   const [history, setHistory] = useState<HistoryBatch[]>([]);
@@ -31,173 +40,142 @@ export default function HistoryPage() {
     };
   }, []);
 
-  const getStatusPill = (status: string) => {
-    if (status === "completed") {
-      return (
-        <span className="pill" style={{ color: "#34d399" }}>
-          <span className="dot dot-green" />
-          <span>Completed</span>
-        </span>
-      );
-    }
-    if (status === "executing") {
-      return (
-        <span className="pill" style={{ color: "#38bdf8" }}>
-          <span className="dot dot-amber" />
-          <span>Executing</span>
-        </span>
-      );
-    }
-    if (status === "awaiting_approval") {
-      return (
-        <span className="pill" style={{ color: "#fbbf24" }}>
-          <span className="dot dot-amber" />
-          <span>Awaiting Review</span>
-        </span>
-      );
-    }
-    if (status === "expired") {
-      return (
-        <span className="pill" style={{ color: "#a1a1aa" }}>
-          <span>Auto-Expired</span>
-        </span>
-      );
-    }
-    return (
-      <span className="pill" style={{ color: "#fb7185" }}>
-        <span className="dot dot-rose" />
-        <span style={{ textTransform: "capitalize" }}>{status}</span>
-      </span>
-    );
-  };
+  const statusInfo = (status: string) =>
+    STATUS_LABEL[status] || { label: status, className: "status-err" };
 
   return (
-    <div className="container" style={{ maxWidth: "1000px" }}>
+    <div className="container" style={{ maxWidth: "880px" }}>
       {/* Header */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "2.5rem" }}>
+      <div
+        className="rise"
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "flex-end",
+          marginBottom: "30px",
+          flexWrap: "wrap",
+          gap: "14px",
+        }}
+      >
         <div>
-          <h1 className="heading-title">Execution Audit Trail</h1>
-          <p style={{ color: "var(--text-secondary)", fontSize: "0.85rem", marginTop: "0.25rem" }}>
-            Log of processed batches, executed side-effects, latency metrics, and verified object links.
+          <p className="mono-label" style={{ marginBottom: "8px" }}>
+            AUDIT TRAIL
+          </p>
+          <h1 className="h-title" style={{ fontSize: "1.4rem" }}>
+            Execution history
+          </h1>
+          <p className="dim" style={{ fontSize: "0.84rem", marginTop: "4px" }}>
+            Processed batches, executed side effects, latency, and object links.
           </p>
         </div>
 
-        <Link href="/" className="btn btn-primary" style={{ fontSize: "0.85rem", padding: "0.45rem 1rem" }}>
-          + New Ingestion
+        <Link href="/" className="btn btn-primary btn-sm">
+          New batch
         </Link>
       </div>
 
-      {loading && (
-        <div style={{ textAlign: "center", padding: "6rem 0", color: "var(--text-muted)", fontSize: "0.9rem" }}>
-          Loading audit trail...
-        </div>
-      )}
-
       {error && (
-        <div
-          style={{
-            padding: "0.75rem 1rem",
-            borderRadius: "8px",
-            background: "rgba(244, 63, 94, 0.1)",
-            border: "1px solid rgba(244, 63, 94, 0.25)",
-            color: "#fb7185",
-            fontSize: "0.85rem",
-            marginBottom: "1.5rem",
-          }}
-        >
+        <div className="notice notice-error" style={{ marginBottom: "18px" }}>
           {error}
         </div>
       )}
 
+      {/* Loading skeletons */}
+      {loading && (
+        <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+          {[0, 1, 2].map((i) => (
+            <div key={i} className="skeleton" style={{ height: "96px", borderRadius: "var(--r-lg)" }} />
+          ))}
+        </div>
+      )}
+
+      {/* Empty state */}
       {!loading && history.length === 0 && (
-        <div className="card-panel" style={{ padding: "4rem 2rem", textAlign: "center" }}>
-          <h3 style={{ fontSize: "1.1rem", fontWeight: 600, color: "#ffffff" }}>No execution history yet</h3>
-          <p style={{ color: "var(--text-secondary)", fontSize: "0.85rem", marginTop: "0.4rem" }}>
-            Ingest your first conversation transcript to execute actions across your tool ecosystem.
+        <div className="panel rise" style={{ padding: "56px 32px", textAlign: "center" }}>
+          <p className="h-title" style={{ fontSize: "1.05rem", marginBottom: "6px" }}>
+            No batches yet
           </p>
-          <Link href="/" className="btn btn-primary" style={{ marginTop: "1.25rem", fontSize: "0.85rem" }}>
-            Ingest Conversation →
+          <p className="dim" style={{ fontSize: "0.85rem", marginBottom: "20px" }}>
+            Ingest a conversation to see executed actions here.
+          </p>
+          <Link href="/" className="btn btn-primary btn-sm">
+            Ingest conversation
           </Link>
         </div>
       )}
 
-      {/* Batch History List */}
-      <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
-        {history.map((b) => (
-          <div key={b.batch_id} className="card-panel" style={{ padding: "1.25rem" }}>
+      {/* Batch list */}
+      <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+        {history.map((b, idx) => {
+          const st = statusInfo(b.status);
+          return (
             <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-                flexWrap: "wrap",
-                gap: "0.75rem",
-                marginBottom: "0.75rem",
-              }}
+              key={b.batch_id}
+              className={`panel panel-hover rise rise-${Math.min(idx + 1, 5)}`}
+              style={{ padding: "16px 20px" }}
             >
-              <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
-                <div>
-                  <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-                    <strong style={{ fontSize: "0.95rem", color: "#ffffff", letterSpacing: "-0.01em" }}>
-                      Batch {b.batch_id.slice(0, 8)}
-                    </strong>
-                    <span className="pill" style={{ fontSize: "0.7rem", textTransform: "capitalize" }}>
-                      {b.source_type.replace("_", " ")}
-                    </span>
-                  </div>
-                  <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>
-                    {b.created_at ? new Date(b.created_at).toLocaleString() : "Recently"}
+              {/* Row 1: id + source | status + review link */}
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  flexWrap: "wrap",
+                  gap: "10px",
+                  marginBottom: "12px",
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+                  <span className="mono" style={{ fontSize: "0.82rem", color: "var(--text)" }}>
+                    {b.batch_id.slice(0, 8)}
+                  </span>
+                  <span className="mono-label">{b.source_type.replace(/_/g, " ").toUpperCase()}</span>
+                  <span className="dim" style={{ fontSize: "0.78rem" }}>
+                    {b.created_at ? new Date(b.created_at).toLocaleString() : ""}
                   </span>
                 </div>
-              </div>
 
-              <div style={{ display: "flex", alignItems: "center", gap: "0.6rem" }}>
-                {getStatusPill(b.status)}
-                {b.status === "awaiting_approval" && (
-                  <Link
-                    href={`/review/${b.batch_id}`}
-                    className="btn btn-primary"
-                    style={{ fontSize: "0.75rem", padding: "0.3rem 0.75rem" }}
+                <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                  <span
+                    className="tag"
+                    style={{ display: "flex", alignItems: "center", gap: "7px" }}
                   >
-                    Review Items →
-                  </Link>
-                )}
-              </div>
-            </div>
-
-            {/* Execution Stats Bar */}
-            <div
-              style={{
-                display: "flex",
-                gap: "1.5rem",
-                background: "rgba(0, 0, 0, 0.4)",
-                padding: "0.5rem 0.75rem",
-                borderRadius: "6px",
-                fontSize: "0.8rem",
-                color: "var(--text-secondary)",
-                marginBottom: b.logs.length > 0 ? "0.75rem" : "0",
-              }}
-            >
-              <div>
-                Total: <strong style={{ color: "#ffffff" }}>{b.total_items}</strong>
-              </div>
-              <div>
-                Executed: <strong style={{ color: "#34d399" }}>{b.executed_items}</strong>
-              </div>
-              <div>
-                Dismissed: <strong style={{ color: "#fb7185" }}>{b.rejected_items}</strong>
-              </div>
-              {b.token_count && (
-                <div>
-                  Tokens: <strong style={{ color: "#ffffff" }}>{b.token_count}</strong>
+                    <span className={`status-dot ${st.className}`} />
+                    {st.label}
+                  </span>
+                  {b.status === "awaiting_approval" && (
+                    <Link href={`/review/${b.batch_id}`} className="btn btn-primary btn-sm">
+                      Review
+                    </Link>
+                  )}
                 </div>
-              )}
-            </div>
+              </div>
 
-            {/* Executed Object Links */}
-            {b.logs.length > 0 && (
-              <div style={{ marginTop: "0.75rem" }}>
-                <div style={{ display: "flex", flexDirection: "column", gap: "0.4rem" }}>
+              {/* Row 2: stats */}
+              <div
+                className="mono-label"
+                style={{
+                  display: "flex",
+                  gap: "20px",
+                  padding: "7px 12px",
+                  background: "var(--bg-input)",
+                  borderRadius: "var(--r-sm)",
+                  marginBottom: b.logs.length > 0 ? "12px" : 0,
+                }}
+              >
+                <span>{b.total_items} ITEMS</span>
+                <span style={{ color: b.executed_items > 0 ? "var(--ok)" : undefined }}>
+                  {b.executed_items} EXECUTED
+                </span>
+                <span style={{ color: b.rejected_items > 0 ? "var(--err)" : undefined }}>
+                  {b.rejected_items} DISMISSED
+                </span>
+                {b.token_count ? <span>{b.token_count} TOKENS</span> : null}
+              </div>
+
+              {/* Row 3: execution logs */}
+              {b.logs.length > 0 && (
+                <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
                   {b.logs.map((log) => (
                     <div
                       key={log.id}
@@ -205,62 +183,66 @@ export default function HistoryPage() {
                         display: "flex",
                         justifyContent: "space-between",
                         alignItems: "center",
-                        padding: "0.45rem 0.75rem",
-                        background: "rgba(255, 255, 255, 0.02)",
-                        border: "1px solid var(--border-subtle)",
-                        borderRadius: "6px",
-                        fontSize: "0.8rem",
+                        gap: "12px",
+                        padding: "8px 12px",
+                        background: "var(--bg-input)",
+                        border: "1px solid var(--line)",
+                        borderRadius: "var(--r-sm)",
+                        fontSize: "0.82rem",
                       }}
                     >
-                      <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-                        <span
-                          className={`pill ${
-                            log.tool === "notion"
-                              ? "pill-notion"
-                              : log.tool === "jira"
-                              ? "pill-jira"
-                              : log.tool === "calendar"
-                              ? "pill-calendar"
-                              : "pill-task_ledger"
-                          }`}
-                          style={{ fontSize: "0.7rem", padding: "0.15rem 0.45rem" }}
-                        >
+                      <div
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "10px",
+                          minWidth: 0,
+                        }}
+                      >
+                        <span className={`tag tag-tool tag-${log.tool as TargetTool}`}>
                           {log.tool}
                         </span>
-                        <span style={{ color: "#ffffff", fontWeight: 500 }}>
-                          {log.item_description || "Action Item"}
+                        <span
+                          style={{
+                            color: "var(--text-secondary)",
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                            whiteSpace: "nowrap",
+                          }}
+                        >
+                          {log.item_description || "Action item"}
                         </span>
                       </div>
 
-                      <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
+                      <div
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "14px",
+                          flexShrink: 0,
+                        }}
+                      >
                         {log.latency_ms !== undefined && (
-                          <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>
-                            {log.latency_ms}ms
-                          </span>
+                          <span className="mono-label">{log.latency_ms}MS</span>
                         )}
+                        <span
+                          className="status-dot"
+                          style={{ background: log.status === "success" ? "var(--ok)" : "var(--err)" }}
+                          title={log.status}
+                        />
                         {log.external_url && (
-                          <a
-                            href={log.external_url}
-                            target="_blank"
-                            rel="noreferrer"
-                            style={{
-                              color: "#06b6d4",
-                              fontSize: "0.75rem",
-                              fontWeight: 500,
-                              textDecoration: "none",
-                            }}
-                          >
-                            Open Link ↗
+                          <a href={log.external_url} target="_blank" rel="noreferrer" className="link-accent" style={{ fontSize: "0.78rem", flexShrink: 0 }}>
+                            Open
                           </a>
                         )}
                       </div>
                     </div>
                   ))}
                 </div>
-              </div>
-            )}
-          </div>
-        ))}
+              )}
+            </div>
+          );
+        })}
       </div>
     </div>
   );

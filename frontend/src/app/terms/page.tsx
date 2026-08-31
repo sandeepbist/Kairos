@@ -10,29 +10,30 @@ export default function TermsPage() {
   return (
     <div className="container" style={{ maxWidth: "920px", paddingTop: "2rem", paddingBottom: "8rem" }}>
       <div style={{ marginBottom: "2.5rem" }}>
-        <Link href="/" style={{ color: "var(--text-muted)", fontSize: "0.85rem", textDecoration: "none" }}>
+        <Link href="/" className="link-quiet mono-label">
           ← Back to Dashboard
         </Link>
-        <h1 className="heading-display" style={{ marginTop: "1rem", marginBottom: "0.5rem" }}>
+        <h1 className="h-display" style={{ marginTop: "1rem", marginBottom: "0.5rem" }}>
           Terms of Service
         </h1>
-        <p style={{ color: "var(--text-secondary)", fontSize: "0.9rem" }}>
+        <p className="dim" style={{ fontSize: "0.82rem" }}>
           Effective Date: August 27, 2026 • Master Subscription & License Agreement (Version 2.4)
         </p>
       </div>
 
       <div
+        className="prose-legal"
         style={{
           display: "flex",
           flexDirection: "column",
-          gap: "2.25rem",
+          gap: "12px",
           color: "var(--text-secondary)",
-          lineHeight: 1.75,
-          fontSize: "0.95rem",
+          lineHeight: 1.7,
+          fontSize: "0.9rem",
         }}
       >
-        <section className="card-panel" style={{ padding: "2rem" }}>
-          <h2 style={{ color: "#ffffff", fontSize: "1.2rem", fontWeight: 600, marginBottom: "0.75rem" }}>
+        <section className="panel" style={{ padding: "22px 26px" }}>
+          <h2 className="h-section" style={{ marginBottom: "10px" }}>
             1. Introduction & Acceptance of Terms
           </h2>
           <p>
@@ -43,8 +44,8 @@ export default function TermsPage() {
           </p>
         </section>
 
-        <section className="card-panel" style={{ padding: "2rem" }}>
-          <h2 style={{ color: "#ffffff", fontSize: "1.2rem", fontWeight: 600, marginBottom: "0.75rem" }}>
+        <section className="panel" style={{ padding: "22px 26px" }}>
+          <h2 className="h-section" style={{ marginBottom: "10px" }}>
             2. Architectural Overview & Nature of the Ambient Action Agent
           </h2>
           <p>
@@ -55,14 +56,14 @@ export default function TermsPage() {
           </p>
         </section>
 
-        <section className="card-panel" style={{ padding: "2rem" }}>
-          <h2 style={{ color: "#ffffff", fontSize: "1.2rem", fontWeight: 600, marginBottom: "0.75rem" }}>
+        <section className="panel" style={{ padding: "22px 26px" }}>
+          <h2 className="h-section" style={{ marginBottom: "10px" }}>
             3. Mandatory Human-in-the-Loop (HITL) Verification & Operator Liability
           </h2>
           <p>
             The Service implements a Human-in-the-Loop review workbench designed to prevent unintended side-effects across connected production environments.
           </p>
-          <ul style={{ paddingLeft: "1.5rem", display: "flex", flexDirection: "column", gap: "0.6rem", marginTop: "0.75rem" }}>
+          <ul style={{ marginTop: "4px" }}>
             <li>
               <strong>Verification Obligation:</strong> You acknowledge that generative AI models may occasionally produce hallucinations, misinterpret multi-speaker nuance, or assign suboptimal parameters. You assume sole operational and legal responsibility for reviewing, modifying, approving, or rejecting every extracted action item.
             </li>
@@ -75,40 +76,40 @@ export default function TermsPage() {
           </ul>
         </section>
 
-        <section className="card-panel" style={{ padding: "2rem" }}>
-          <h2 style={{ color: "#ffffff", fontSize: "1.2rem", fontWeight: 600, marginBottom: "0.75rem" }}>
+        <section className="panel" style={{ padding: "22px 26px" }}>
+          <h2 className="h-section" style={{ marginBottom: "10px" }}>
             4. Third-Party Integrations & Model Context Protocol (MCP) Connectors
           </h2>
           <p>
             The Service interfaces with third-party software platforms using official APIs and Model Context Protocol servers. You acknowledge and agree that:
           </p>
-          <ul style={{ paddingLeft: "1.5rem", display: "flex", flexDirection: "column", gap: "0.6rem", marginTop: "0.75rem" }}>
+          <ul style={{ marginTop: "4px" }}>
             <li>You must hold valid, active accounts in good standing with each connected third-party service provider.</li>
             <li>Your use of third-party platforms remains subject to Atlassian&rsquo;s, Notion Labs&rsquo;, and Google LLC&rsquo;s independent terms of service and acceptable use policies.</li>
             <li>Kairos does not control, and is not responsible for, rate limiting, service downtime, API deprecations, or modifications imposed by third-party providers.</li>
           </ul>
         </section>
 
-        <section className="card-panel" style={{ padding: "2rem" }}>
-          <h2 style={{ color: "#ffffff", fontSize: "1.2rem", fontWeight: 600, marginBottom: "0.75rem" }}>
+        <section className="panel" style={{ padding: "22px 26px" }}>
+          <h2 className="h-section" style={{ marginBottom: "10px" }}>
             5. OAuth Credential Vault & Cryptographic Key Management
           </h2>
           <p>
             All access tokens, refresh tokens, and API credentials provided to the Service are stored in an internal PostgreSQL database encrypted at rest using AES-256 Fernet symmetric encryption.
           </p>
           <p style={{ marginTop: "0.75rem" }}>
-            <strong>Operator Key Custody:</strong> In self-hosted or dedicated deployments, you are solely responsible for generating, safeguarding, and backing up your master encryption key (<code style={{ color: "#38bdf8" }}>ENCRYPTION_KEY</code>). Loss of the encryption key will render stored OAuth credentials irrecoverable.
+            <strong>Operator Key Custody:</strong> In self-hosted or dedicated deployments, you are solely responsible for generating, safeguarding, and backing up your master encryption key (<code >ENCRYPTION_KEY</code>). Loss of the encryption key will render stored OAuth credentials irrecoverable.
           </p>
         </section>
 
-        <section className="card-panel" style={{ padding: "2rem" }}>
-          <h2 style={{ color: "#ffffff", fontSize: "1.2rem", fontWeight: 600, marginBottom: "0.75rem" }}>
+        <section className="panel" style={{ padding: "22px 26px" }}>
+          <h2 className="h-section" style={{ marginBottom: "10px" }}>
             6. Acceptable Use & Prompt Injection Defense
           </h2>
           <p>
             You agree not to use the Service to:
           </p>
-          <ul style={{ paddingLeft: "1.5rem", display: "flex", flexDirection: "column", gap: "0.6rem", marginTop: "0.75rem" }}>
+          <ul style={{ marginTop: "4px" }}>
             <li>Transmit malicious payloads, exploit prompt injection vulnerabilities, or attempt to bypass system security boundaries.</li>
             <li>Process classified, military, or regulated health data without appropriate Business Associate Agreements (BAA) in place.</li>
             <li>Engage in automated harassment, spam generation, or unauthorized scraping.</li>
@@ -116,8 +117,8 @@ export default function TermsPage() {
           </ul>
         </section>
 
-        <section className="card-panel" style={{ padding: "2rem" }}>
-          <h2 style={{ color: "#ffffff", fontSize: "1.2rem", fontWeight: 600, marginBottom: "0.75rem" }}>
+        <section className="panel" style={{ padding: "22px 26px" }}>
+          <h2 className="h-section" style={{ marginBottom: "10px" }}>
             7. Intellectual Property & Customer Data Ownership
           </h2>
           <p>
@@ -128,8 +129,8 @@ export default function TermsPage() {
           </p>
         </section>
 
-        <section className="card-panel" style={{ padding: "2rem" }}>
-          <h2 style={{ color: "#ffffff", fontSize: "1.2rem", fontWeight: 600, marginBottom: "0.75rem" }}>
+        <section className="panel" style={{ padding: "22px 26px" }}>
+          <h2 className="h-section" style={{ marginBottom: "10px" }}>
             8. Disclaimer of Warranties
           </h2>
           <p style={{ textTransform: "uppercase", fontSize: "0.85rem", letterSpacing: "0.02em", color: "var(--text-muted)" }}>
@@ -137,8 +138,8 @@ export default function TermsPage() {
           </p>
         </section>
 
-        <section className="card-panel" style={{ padding: "2rem" }}>
-          <h2 style={{ color: "#ffffff", fontSize: "1.2rem", fontWeight: 600, marginBottom: "0.75rem" }}>
+        <section className="panel" style={{ padding: "22px 26px" }}>
+          <h2 className="h-section" style={{ marginBottom: "10px" }}>
             9. Limitation of Liability
           </h2>
           <p style={{ textTransform: "uppercase", fontSize: "0.85rem", letterSpacing: "0.02em", color: "var(--text-muted)" }}>
@@ -146,8 +147,8 @@ export default function TermsPage() {
           </p>
         </section>
 
-        <section className="card-panel" style={{ padding: "2rem" }}>
-          <h2 style={{ color: "#ffffff", fontSize: "1.2rem", fontWeight: 600, marginBottom: "0.75rem" }}>
+        <section className="panel" style={{ padding: "22px 26px" }}>
+          <h2 className="h-section" style={{ marginBottom: "10px" }}>
             10. Indemnification
           </h2>
           <p>
@@ -155,8 +156,8 @@ export default function TermsPage() {
           </p>
         </section>
 
-        <section className="card-panel" style={{ padding: "2rem" }}>
-          <h2 style={{ color: "#ffffff", fontSize: "1.2rem", fontWeight: 600, marginBottom: "0.75rem" }}>
+        <section className="panel" style={{ padding: "22px 26px" }}>
+          <h2 className="h-section" style={{ marginBottom: "10px" }}>
             11. Governing Law & Dispute Resolution
           </h2>
           <p>
@@ -164,8 +165,8 @@ export default function TermsPage() {
           </p>
         </section>
 
-        <section className="card-panel" style={{ padding: "2rem" }}>
-          <h2 style={{ color: "#ffffff", fontSize: "1.2rem", fontWeight: 600, marginBottom: "0.75rem" }}>
+        <section className="panel" style={{ padding: "22px 26px" }}>
+          <h2 className="h-section" style={{ marginBottom: "10px" }}>
             12. Modifications to Terms & Service
           </h2>
           <p>

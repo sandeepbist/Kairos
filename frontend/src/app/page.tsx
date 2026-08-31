@@ -8,7 +8,7 @@ import { SourceType } from "@/lib/types";
 
 const SAMPLE_PRESETS = {
   meeting: {
-    label: "Engineering Sync",
+    label: "Engineering sync",
     type: "meeting_transcript" as SourceType,
     text: `Sarah: Alex, please file a high priority ticket for the checkout crash bug by tomorrow morning.
 Alex: Sure Sarah, I will schedule a review meeting with the frontend team on Thursday at 2 PM to go over the fix.
@@ -16,14 +16,14 @@ John: I will update the technical spec doc in the roadmap wiki and share it with
 Sarah: Let's also make sure someone follows up on the billing invoices discrepancy.`,
   },
   incident: {
-    label: "Incident Post-Mortem",
+    label: "Incident review",
     type: "slack_conversation" as SourceType,
     text: `IncidentLead: Mark, please file an urgent Jira bug on the auth token expiration race condition.
 DevOps: I will schedule a post-mortem sync call with the on-call team tomorrow at 10 AM.
 Security: Please document the root cause analysis in Notion under the Incident Database.`,
   },
   email: {
-    label: "Scope Email",
+    label: "Scope email",
     type: "email_thread" as SourceType,
     text: `From: product-lead@company.com
 Subject: Q3 Architecture Deliverables
@@ -34,13 +34,20 @@ Hi Team,
 3. Task: Clean up all outdated deployment scripts before the freeze.`,
   },
   legal: {
-    label: "Legal / MSA Agreement",
+    label: "Vendor notes",
     type: "general_notes" as SourceType,
     text: `Master Services Agreement Excerpt:
 1. LegalCounsel: Alex, please file a Jira compliance audit ticket for the SOC2 Type II controls.
 2. VendorManager: Sarah, please schedule a quarterly SLA compliance review call with the vendor for next Friday at 3 PM.
 3. Operations: Please document the intellectual property assignment schedule in Notion under Corporate Legal Wiki.`,
   },
+};
+
+const SOURCE_LABELS: Record<SourceType, string> = {
+  meeting_transcript: "Meeting transcript",
+  slack_conversation: "Slack conversation",
+  email_thread: "Email thread",
+  general_notes: "General notes",
 };
 
 export default function IngestPage() {
@@ -52,6 +59,7 @@ export default function IngestPage() {
 
   const wordCount = rawText.trim() ? rawText.trim().split(/\s+/).length : 0;
   const approxTokens = Math.round(wordCount * 1.33);
+  const overLimit = approxTokens > 3000;
 
   const handleLoadPreset = (key: keyof typeof SAMPLE_PRESETS) => {
     setRawText(SAMPLE_PRESETS[key].text);
@@ -61,7 +69,7 @@ export default function IngestPage() {
 
   const handleIngest = async () => {
     if (!rawText.trim() || rawText.length < 10) {
-      setError("Please enter at least 10 characters of conversation text.");
+      setError("Enter at least 10 characters of conversation text.");
       return;
     }
 
@@ -72,165 +80,164 @@ export default function IngestPage() {
       const response = await ingestBatch(rawText, sourceType);
       router.push(`/review/${response.batch_id}`);
     } catch (err) {
-      setError(
-        errorMessage(err, "Failed to submit batch. Verify the backend is reachable.")
-      );
+      setError(errorMessage(err, "Failed to submit batch. Verify the backend is reachable."));
       setLoading(false);
     }
   };
 
   return (
-    <div className="container" style={{ maxWidth: "880px", paddingTop: "4rem", paddingBottom: "6rem" }}>
-      {/* Hero Header */}
-      <div style={{ marginBottom: "3rem" }}>
-        <div className="pill" style={{ marginBottom: "1rem" }}>
-          <span className="dot dot-green" />
-          <span>Ambient Action Agent</span>
-        </div>
-        <h1 className="heading-display" style={{ marginBottom: "1rem" }}>
-          Turn conversations into executed actions.
+    <div className="container" style={{ maxWidth: "760px" }}>
+      {/* Header */}
+      <div className="rise" style={{ marginBottom: "40px" }}>
+        <p className="eyebrow" style={{ marginBottom: "14px" }}>
+          AMBIENT ACTION ENGINE
+        </p>
+        <h1 className="h-display" style={{ marginBottom: "14px" }}>
+          Conversations in.
+          <br />
+          Actions out.
         </h1>
-        <p className="text-subhead" style={{ maxWidth: "620px" }}>
-          Paste meeting transcripts, emails, or incident logs. Kairos reasons over the text, matches target MCP tools, and routes side-effects for 1-click human verification.
+        <p className="muted" style={{ fontSize: "0.95rem", maxWidth: "480px" }}>
+          Paste a transcript, thread, or note. Kairos extracts the commitments,
+          routes each to the right tool, and executes — after your approval.
         </p>
       </div>
 
-      {/* Preset Selector & Format Bar */}
+      {/* Templates + format */}
       <div
+        className="rise rise-1"
         style={{
           display: "flex",
           alignItems: "center",
           justifyContent: "space-between",
-          marginBottom: "1rem",
+          gap: "12px",
           flexWrap: "wrap",
-          gap: "0.75rem",
+          marginBottom: "14px",
         }}
       >
-        <div style={{ display: "flex", alignItems: "center", gap: "0.4rem", flexWrap: "wrap" }}>
-          <span style={{ fontSize: "0.8rem", color: "var(--text-muted)", marginRight: "0.25rem" }}>
-            Templates:
+        <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+          <span className="mono-label" style={{ marginRight: "2px" }}>
+            SAMPLES
           </span>
-          <button
-            type="button"
-            className="btn btn-secondary"
-            onClick={() => handleLoadPreset("meeting")}
-            style={{ fontSize: "0.75rem", padding: "0.3rem 0.65rem", borderRadius: "6px" }}
-          >
-            {SAMPLE_PRESETS.meeting.label}
-          </button>
-          <button
-            type="button"
-            className="btn btn-secondary"
-            onClick={() => handleLoadPreset("incident")}
-            style={{ fontSize: "0.75rem", padding: "0.3rem 0.65rem", borderRadius: "6px" }}
-          >
-            {SAMPLE_PRESETS.incident.label}
-          </button>
-          <button
-            type="button"
-            className="btn btn-secondary"
-            onClick={() => handleLoadPreset("email")}
-            style={{ fontSize: "0.75rem", padding: "0.3rem 0.65rem", borderRadius: "6px" }}
-          >
-            {SAMPLE_PRESETS.email.label}
-          </button>
-          <button
-            type="button"
-            className="btn btn-secondary"
-            onClick={() => handleLoadPreset("legal")}
-            style={{ fontSize: "0.75rem", padding: "0.3rem 0.65rem", borderRadius: "6px" }}
-          >
-            {SAMPLE_PRESETS.legal.label}
-          </button>
+          {(Object.keys(SAMPLE_PRESETS) as Array<keyof typeof SAMPLE_PRESETS>).map((key) => (
+            <button
+              key={key}
+              type="button"
+              className="btn btn-secondary btn-sm"
+              onClick={() => handleLoadPreset(key)}
+            >
+              {SAMPLE_PRESETS[key].label}
+            </button>
+          ))}
         </div>
 
-        {/* Source Format Selector */}
-        <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-          <label style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>Format:</label>
-          <select
-            value={sourceType}
-            onChange={(e) => setSourceType(e.target.value as SourceType)}
-            style={{
-              padding: "0.3rem 0.6rem",
-              borderRadius: "6px",
-              background: "var(--bg-surface)",
-              border: "1px solid var(--border-subtle)",
-              color: "var(--text-primary)",
-              fontSize: "0.8rem",
-              cursor: "pointer",
-              outline: "none",
-            }}
-          >
-            <option value="meeting_transcript">Meeting Transcript</option>
-            <option value="slack_conversation">Slack Conversation</option>
-            <option value="email_thread">Email Thread</option>
-            <option value="general_notes">General Notes</option>
-          </select>
-        </div>
+        <select
+          value={sourceType}
+          onChange={(e) => setSourceType(e.target.value as SourceType)}
+          className="select"
+          style={{ width: "auto", fontSize: "0.8rem", padding: "6px 10px" }}
+          aria-label="Source type"
+        >
+          {(Object.keys(SOURCE_LABELS) as SourceType[]).map((t) => (
+            <option key={t} value={t}>
+              {SOURCE_LABELS[t]}
+            </option>
+          ))}
+        </select>
       </div>
 
-      {/* Editor Panel */}
-      <div className="card-panel" style={{ padding: "1.25rem", marginBottom: "1.5rem" }}>
+      {/* Editor */}
+      <div className="panel rise rise-2" style={{ overflow: "hidden" }}>
         <textarea
           value={rawText}
           onChange={(e) => setRawText(e.target.value)}
-          placeholder="Paste raw conversation, transcript, or unstructured notes here..."
-          rows={11}
+          placeholder="Paste raw conversation, transcript, or unstructured notes…"
+          rows={12}
+          spellCheck={false}
           style={{
             width: "100%",
             background: "transparent",
             border: "none",
             outline: "none",
-            color: "var(--text-primary)",
-            fontSize: "0.9rem",
-            lineHeight: 1.6,
+            color: "var(--text)",
+            fontSize: "0.875rem",
+            lineHeight: 1.7,
             fontFamily: "var(--font-mono)",
+            padding: "18px 20px",
             resize: "vertical",
+            minHeight: "240px",
           }}
         />
-
         <div
           style={{
             display: "flex",
             justifyContent: "space-between",
             alignItems: "center",
-            paddingTop: "1rem",
-            borderTop: "1px solid var(--border-subtle)",
-            marginTop: "0.75rem",
+            padding: "12px 20px",
+            borderTop: "1px solid var(--line)",
+            background: "var(--bg-raised)",
           }}
         >
-          <div style={{ display: "flex", gap: "1rem", fontSize: "0.8rem", color: "var(--text-muted)" }}>
-            <span>{wordCount} words</span>
-            <span>~{approxTokens} tokens</span>
-            <span>Max: 3,000</span>
+          <div
+            className="mono-label"
+            style={{ display: "flex", gap: "16px" }}
+          >
+            <span>{wordCount} WORDS</span>
+            <span style={{ color: overLimit ? "var(--err)" : undefined }}>
+              ~{approxTokens} TOKENS
+            </span>
+            <span>LIMIT 3000</span>
           </div>
 
           <button
             type="button"
             onClick={handleIngest}
-            disabled={loading}
+            disabled={loading || !rawText.trim()}
             className="btn btn-primary"
-            style={{ padding: "0.55rem 1.25rem", fontSize: "0.875rem" }}
           >
-            {loading ? "Extracting..." : "Extract & Route Actions →"}
+            {loading ? (
+              <>
+                <span className="spinner" /> Extracting
+              </>
+            ) : (
+              "Extract actions"
+            )}
           </button>
         </div>
       </div>
 
       {error && (
-        <div
-          style={{
-            padding: "0.75rem 1rem",
-            borderRadius: "8px",
-            background: "rgba(244, 63, 94, 0.1)",
-            border: "1px solid rgba(244, 63, 94, 0.25)",
-            color: "#fb7185",
-            fontSize: "0.875rem",
-          }}
-        >
+        <div className="notice notice-error rise rise-3" style={{ marginTop: "14px" }}>
           {error}
         </div>
       )}
+
+      {/* How it works — quiet three-step strip */}
+      <div
+        className="rise rise-4"
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(3, 1fr)",
+          gap: "12px",
+          marginTop: "44px",
+        }}
+      >
+        {[
+          ["01", "Extract", "Structured action items with verbatim source quotes."],
+          ["02", "Verify", "Approve, edit, or dismiss each item — nothing runs without you."],
+          ["03", "Execute", "Real side effects in Jira, Notion, Calendar, or the ledger."],
+        ].map(([n, title, body]) => (
+          <div key={n} style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+            <span className="mono" style={{ fontSize: "0.72rem", color: "var(--text-dim)" }}>
+              {n}
+            </span>
+            <span className="h-section">{title}</span>
+            <span className="dim" style={{ fontSize: "0.82rem", lineHeight: 1.55 }}>
+              {body}
+            </span>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
