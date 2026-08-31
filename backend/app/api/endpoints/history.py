@@ -71,7 +71,9 @@ async def delete_batch(
 
     Cascades remove action items and execution logs. Routing feedback
     rows carry no raw transcript content and are retained for the
-    learning loop.
+    learning loop. Batches whose Temporal workflow is still mid-flight
+    (processing/executing) are refused with 409 — deleting under a live
+    workflow would leave it retrying against a missing parent.
     """
     query = select(BatchModel).where(BatchModel.id == batch_id)
     result = await db.execute(query)
@@ -81,6 +83,16 @@ async def delete_batch(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Batch with ID '{batch_id}' not found.",
+        )
+    if batch.status in ("processing", "executing"):
+        from fastapi import HTTPException, status
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                f"Batch '{batch_id}' is still {batch.status}. "
+                "Wait for it to reach a terminal state (awaiting_approval, "
+                "completed, expired, or failed) before deleting."
+            ),
         )
     await db.delete(batch)
     await db.commit()

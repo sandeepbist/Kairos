@@ -1,6 +1,8 @@
 """Temporal Activities for Kairos Batch Processing Pipeline."""
 from typing import Any
+
 from temporalio import activity
+from temporalio.exceptions import ApplicationError
 from sqlalchemy import select
 from app.db.session import async_session_factory
 from app.db.models import BatchModel, ActionItemModel
@@ -42,9 +44,16 @@ async def persist_extracted_items_activity(
         batch_query = select(BatchModel).where(BatchModel.id == batch_id)
         batch_res = await session.execute(batch_query)
         batch = batch_res.scalar_one_or_none()
-        if batch:
-            batch.status = "awaiting_approval"
-            batch.token_count = token_count
+        if not batch:
+            # Batch was erased (operator deletion) while the workflow ran.
+            # Retrying cannot succeed — fail this activity permanently and
+            # let the workflow's remaining steps become no-ops.
+            raise ApplicationError(
+                f"Batch {batch_id} no longer exists (erased during processing); abandoning.",
+                non_retryable=True,
+            )
+        batch.status = "awaiting_approval"
+        batch.token_count = token_count
 
         # Insert items
         for item in routed_items:

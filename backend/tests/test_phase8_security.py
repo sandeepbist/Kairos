@@ -166,3 +166,53 @@ async def test_batch_deletion_erasure():
             assert False, "should have raised"
         except HTTPException as e:
             assert e.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_batch_deletion_refuses_active_batches():
+    """Deleting a batch that is still processing/executing must 409."""
+    import uuid as _uuid
+    from fastapi import HTTPException
+    from app.db.session import async_session_factory as factory
+    from app.db.models import BatchModel
+    from app.api.endpoints.history import delete_batch
+
+    async with factory() as session:
+        batch = BatchModel(
+            id=str(_uuid.uuid4()),
+            raw_text="Sarah: Alex, please file a ticket for the deletion guard test.",
+            status="processing",
+        )
+        session.add(batch)
+        await session.commit()
+        bid = batch.id
+
+    async with factory() as db:
+        try:
+            await delete_batch(bid, db)
+            assert False, "should have raised 409"
+        except HTTPException as e:
+            assert e.status_code == 409
+            assert "still processing" in e.detail
+
+    # Batch must still exist
+    async with factory() as session:
+        from sqlalchemy import select as _select
+        still = (
+            await session.execute(_select(BatchModel).where(BatchModel.id == bid))
+        ).scalar_one_or_none()
+        assert still is not None
+
+    # Terminal states delete fine (re-fetch inside the active session;
+    # 'still' is detached once its session block closed)
+    async with factory() as session:
+        from sqlalchemy import select as _select
+        terminal = (
+            await session.execute(_select(BatchModel).where(BatchModel.id == bid))
+        ).scalar_one()
+        terminal.status = "failed"
+        await session.commit()
+
+    async with factory() as db:
+        res = await delete_batch(bid, db)
+        assert res["status"] == "deleted"
