@@ -67,11 +67,6 @@ class Settings(BaseSettings):
             f"@{self.POSTGRES_HOST}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
         )
 
-    # Redis
-    REDIS_HOST: str = "localhost"
-    REDIS_PORT: int = 6381
-    REDIS_URL: str = "redis://localhost:6381/0"
-
     # Temporal
     TEMPORAL_HOST: str = "localhost:7234"
     TEMPORAL_NAMESPACE: str = "default"

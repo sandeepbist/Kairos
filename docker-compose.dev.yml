@@ -17,20 +17,6 @@ services:
       timeout: 5s
       retries: 5
 
-  kairos-redis:
-    image: redis:7-alpine
-    container_name: kairos-redis
-    restart: unless-stopped
-    ports:
-      - "6381:6379"
-    volumes:
-      - kairos_redisdata:/data
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-
   kairos-temporal:
     image: temporalio/temporal:1.8.2
     container_name: kairos-temporal
@@ -49,5 +35,4 @@ services:
 
 volumes:
   kairos_pgdata:
-  kairos_redisdata:
   kairos_temporaldata:
