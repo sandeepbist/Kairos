@@ -45,7 +45,7 @@ echo "✓ Temporal Worker running (PID $WORKER_PID)."
 
 # 4. Start FastAPI Backend
 echo "🚀 [3/4] Starting FastAPI Backend on http://0.0.0.0:8000..."
-uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload &
+uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload --no-proxy-headers &
 BACKEND_PID=$!
 echo "✓ FastAPI Backend running (PID $BACKEND_PID)."
 

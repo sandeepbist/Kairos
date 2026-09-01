@@ -1,7 +1,7 @@
 from datetime import datetime, date, timezone
 from typing import Literal, Any
 import uuid
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 SourceType = Literal["meeting_transcript", "email_thread", "slack_conversation", "general_notes"]
 TargetTool = Literal["notion", "jira", "calendar", "task_ledger"]
@@ -70,13 +70,19 @@ class ActionItemDecision(BaseModel):
 class ActionItemApprovalRequest(BaseModel):
     """Payload received when user submits batch decisions."""
     batch_id: str
-    decisions: list[ActionItemDecision]
+    # A batch never legitimately exceeds a few hundred items; thousands
+    # of decisions would fan out into thousands of workflow activities.
+    decisions: list[ActionItemDecision] = Field(..., max_length=200)
 
 
 class BatchIngestRequest(BaseModel):
     """Incoming request to ingest text and start extraction workflow."""
-    raw_text: str = Field(..., min_length=10, description="Raw unstructured text")
+    # Hard cap at the schema boundary: oversized submissions are rejected
+    # before storage or workflow dispatch (the pipeline's token guard is
+    # for quality, not a size limit).
+    raw_text: str = Field(..., min_length=10, max_length=50_000, description="Raw unstructured text")
     source_type: SourceType = Field(default="meeting_transcript", description="Type of unstructured input")
+    model_config = ConfigDict(extra="forbid")
 
 
 class BatchStatusResponse(BaseModel):

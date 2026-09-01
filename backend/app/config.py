@@ -95,6 +95,13 @@ class Settings(BaseSettings):
     # CORS: exact origins only (no wildcard) in production
     CORS_ORIGINS: str = "http://localhost:3000,http://127.0.0.1:3000"
 
+    # Set true ONLY when a trusted reverse proxy that overwrites
+    # X-Forwarded-For fronts the API. The rate limiter then keys on the
+    # last XFF entry (the hop the proxy recorded); otherwise it uses the
+    # raw socket peer, because uvicorn's default proxy-header handling
+    # rewrites request.client from client-supplied XFF — spoofable.
+    TRUST_PROXY: bool = False
+
     @property
     def cors_origin_list(self) -> list[str]:
         return [o.strip() for o in self.CORS_ORIGINS.split(",") if o.strip()]

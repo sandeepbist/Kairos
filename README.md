@@ -85,6 +85,7 @@ the Settings UI is encrypted into PostgreSQL instead.
 | `API_KEY` | prod | Operator key (≥16 chars) guarding every API route |
 | `ENCRYPTION_KEY` | prod | 44-char Fernet key for the credential vault |
 | `CORS_ORIGINS` | prod | Exact allowed origins for the published frontend |
+| `TRUST_PROXY` | optional | `true` only behind a proxy that overwrites X-Forwarded-For (rate limiter then trusts its last entry) |
 | `GOOGLE_API_KEY` / `OPENAI_API_KEY` | optional | Enables LLM extraction and semantic memory |
 | `NOTION_API_KEY`, `JIRA_*`, `GOOGLE_CALENDAR_ACCESS_TOKEN` | optional | Live tool execution |
 | `SANDBOX_MODE` | optional | `true` simulates all executions, no side effects |

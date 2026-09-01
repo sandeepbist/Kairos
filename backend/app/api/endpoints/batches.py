@@ -55,7 +55,7 @@ async def ingest_batch(
         await db.commit()
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=f"Could not dispatch workflow to Temporal orchestrator: {str(e)}",
+            detail="Extraction orchestrator is unavailable. Retry shortly.",
         )
 
     # Log telemetry trace link

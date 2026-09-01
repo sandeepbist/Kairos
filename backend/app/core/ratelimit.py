@@ -43,7 +43,21 @@ class InMemoryRateLimiter:
 
 
 def _client_ip(request: Request) -> str:
-    """Trust X-Forwarded-For only when running behind a proxy we control."""
+    """Resolve the rate-limit key, immune to client-supplied X-Forwarded-For.
+
+    Uvicorn (>=0.46) enables --proxy-headers by default for loopback peers,
+    which rewrites request.client from attacker-controlled X-Forwarded-For —
+    so request.client alone cannot be trusted to identify a client. The
+    X-Forwarded-For chain is right-to-left: the LAST entry is the one added
+    by the hop we actually talk to. Only when TRUST_PROXY is explicitly set
+    (deployment behind a proxy that overwrites XFF) do we honor that last
+    entry; otherwise the limiter keys every request by its true socket
+    peer. A spoofed header then cannot mint fresh identities.
+    """
+    if settings.TRUST_PROXY:
+        xff = request.headers.get("X-Forwarded-For", "")
+        if xff:
+            return xff.split(",")[-1].strip()
     if request.client:
         return request.client.host
     return "unknown"
@@ -82,6 +96,35 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
 PUBLIC_PATHS_NO_LIMIT: frozenset[str] = frozenset({"/api/health"})
 
 
+class MaxBodySizeMiddleware(BaseHTTPMiddleware):
+    """Rejects request bodies over 1 MB at the edge.
+
+    Schema caps (raw_text 50k chars, decisions 200, tokens 8k) make a
+    legitimate body far smaller; 1 MB headroom keeps batch ingest safe
+    while blocking memory-abuse payloads before any parsing happens.
+    """
+
+    MAX_BYTES = 1_048_576
+
+    async def dispatch(self, request: Request, call_next: Callable) -> Response:
+        content_length = request.headers.get("Content-Length")
+        if content_length:
+            try:
+                if int(content_length) > self.MAX_BYTES:
+                    return Response(
+                        content='{"detail": "Request body too large."}',
+                        status_code=413,
+                        media_type="application/json",
+                    )
+            except ValueError:
+                return Response(
+                    content='{"detail": "Invalid Content-Length."}',
+                    status_code=400,
+                    media_type="application/json",
+                )
+        return await call_next(request)
+
+
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
     """Sets defensive HTTP response headers on every response."""
 
@@ -100,3 +143,4 @@ def register_security_middleware(app: FastAPI) -> None:
     """Installs security headers + rate limiting (outermost first-run order)."""
     app.add_middleware(SecurityHeadersMiddleware)
     app.add_middleware(RateLimitMiddleware)
+    app.add_middleware(MaxBodySizeMiddleware)

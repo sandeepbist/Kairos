@@ -216,3 +216,104 @@ async def test_batch_deletion_refuses_active_batches():
     async with factory() as db:
         res = await delete_batch(bid, db)
         assert res["status"] == "deleted"
+
+
+def test_rate_limit_key_immune_to_xff_spoofing():
+    """Spoofed X-Forwarded-For must not mint fresh rate-limit identities.
+
+    uvicorn >= 0.46 rewrites request.client from XFF for loopback peers by
+    default, so the limiter must not key on request.client when spoofing is
+    possible: with TRUST_PROXY off it uses the socket peer for every request,
+    and with TRUST_PROXY on it uses only the LAST XFF entry (the hop added by
+    the proxy in front), never the client-controlled left side.
+    """
+    from app.core.ratelimit import InMemoryRateLimiter, _client_ip
+
+    class FakeClient:
+        host = "203.0.113.50"  # spoofed rewrite by uvicorn
+
+    class FakeRequest:
+        client = FakeClient()
+        headers = {"X-Forwarded-For": "1.2.3.4, 5.6.7.8, 203.0.113.50"}
+
+    # Default (untrusted): key is the socket peer, identical for every
+    # request — a spoofed XFF yields no new identity.
+    from app.config import settings
+    settings.TRUST_PROXY = False
+    assert _client_ip(FakeRequest()) == "203.0.113.50"
+
+    # Trusted-proxy mode: only the LAST entry counts; earlier
+    # client-controlled entries are ignored.
+    settings.TRUST_PROXY = True
+    assert _client_ip(FakeRequest()) == "203.0.113.50"
+
+    # And a rotating first entry still resolves to the same final hop.
+    class Rotating(FakeRequest):
+        headers = {"X-Forwarded-For": "9.9.9.9, 203.0.113.50"}
+
+    assert _client_ip(Rotating()) == "203.0.113.50"
+    settings.TRUST_PROXY = False
+
+
+def test_request_body_size_cap():
+    """Bodies over 1 MB are rejected 413 before parsing or storage."""
+    from starlette.testclient import TestClient
+    from app.main import app
+
+    with TestClient(app) as c:
+        big = {"raw_text": "A" * 1_200_000, "source_type": "meeting_transcript"}
+        r = c.post("/api/batches/ingest", json=big)
+        assert r.status_code == 413
+        assert "too large" in r.json()["detail"]
+
+
+def test_raw_text_field_cap():
+    """raw_text over 50k chars is rejected 422 (schema-level)."""
+    from app.schemas.action_item import BatchIngestRequest
+    from pydantic import ValidationError
+    import pytest as _pytest
+
+    with _pytest.raises(ValidationError):
+        BatchIngestRequest(raw_text="A" * 50_001)
+    # at the cap is fine
+    ok = BatchIngestRequest(raw_text="A" * 50_000)
+    assert len(ok.raw_text) == 50_000
+
+
+def test_decision_list_cap():
+    """Approval payloads over 200 decisions are rejected 422."""
+    from app.schemas.action_item import ActionItemApprovalRequest
+    from pydantic import ValidationError
+    import pytest as _pytest
+
+    with _pytest.raises(ValidationError):
+        ActionItemApprovalRequest(
+            batch_id="x",
+            decisions=[{"item_id": str(i), "action": "APPROVE"} for i in range(201)],
+        )
+
+
+def test_ingest_rejects_unknown_fields():
+    """Ingest schema forbids extra fields — deep/nested junk 422s, not 201."""
+    from app.schemas.action_item import BatchIngestRequest
+    from pydantic import ValidationError
+    import pytest as _pytest
+
+    with _pytest.raises(ValidationError):
+        BatchIngestRequest.model_validate(
+            {"raw_text": "Sarah: probe ok.", "source_type": "meeting_transcript", "junk": {"a": {"b": {}}}}
+        )
+
+
+def test_oauth_token_size_caps():
+    """Oversized tokens/providers are rejected at the schema boundary."""
+    from app.api.endpoints.connectors import SaveOAuthTokenRequest
+    from pydantic import ValidationError
+    import pytest as _pytest
+
+    with _pytest.raises(ValidationError):
+        SaveOAuthTokenRequest(provider="notion", access_token="T" * 8_193)
+    with _pytest.raises(ValidationError):
+        SaveOAuthTokenRequest(provider="x" * 60, access_token="T" * 32)
+    ok = SaveOAuthTokenRequest(provider="notion", access_token="T" * 8_192)
+    assert ok.provider == "notion"

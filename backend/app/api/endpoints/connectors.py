@@ -1,6 +1,6 @@
 """Connectors API Endpoints: Health status, OAuth vault, and Sandbox toggles."""
 from typing import Any
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -14,10 +14,10 @@ router = APIRouter(prefix="/connectors", tags=["connectors"])
 
 
 class SaveOAuthTokenRequest(BaseModel):
-    provider: str  # notion, jira, google_calendar
-    access_token: str
-    refresh_token: str | None = None
-    scopes: str | None = None
+    provider: str = Field(min_length=2, max_length=50)
+    access_token: str = Field(min_length=8, max_length=8_192)
+    refresh_token: str | None = Field(default=None, max_length=8_192)
+    scopes: str | None = Field(default=None, max_length=2_000)
 
 
 class SandboxToggleRequest(BaseModel):
