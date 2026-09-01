@@ -1,80 +1,119 @@
-# Kairos — Ambient Action Extraction & Execution Engine
+# Kairos
 
-Kairos turns unstructured input — meeting transcripts, email threads, Slack
-conversations — into **real, executed actions** across Notion, Jira, Google
-Calendar, and a built-in Task Ledger MCP server, behind a human approval
-checkpoint.
+Kairos turns meeting transcripts, email threads, and chat logs into actions
+that actually run. An extraction pipeline proposes the actions, a human
+approves each one, and the system executes them in whatever tools the
+operator has connected — keeping an audit trail and learning routing
+preferences along the way.
 
-Paste a transcript → the pipeline extracts candidate action items with
-verbatim source provenance → an operator reviews, edits, and approves →
-approved items execute against real APIs with SHA-256 idempotency and
-Temporal durable orchestration — and the system learns routing
-preferences from every decision.
+It is self-hosted, single-operator software. You run the whole stack; your
+transcripts and credentials stay on your infrastructure.
 
----
+**What it is not:** a multi-user SaaS. One operator key, one set of connected
+tool accounts, one shared history. See [Deployment scope](#deployment-scope)
+before going live.
 
-## Architecture
+## How it works
 
-```mermaid
-flowchart TD
-    subgraph Client
-        UI[Next.js 16 Dashboard] -- "same-origin /api/*" --> PX[Edge Proxy<br/>injects X-API-Key]
-    end
-    PX --> API[FastAPI API<br/>auth + rate limit]
-    API --> DB[(PostgreSQL)]
-    API -- start workflow --> TM[Temporal Server]
-    TM -- activity poll --> WK[Temporal Worker]
-    WK -- extraction/routing --> LG[LangGraph Pipeline]
-    WK -- approvals --> MCP[MCP Connector Layer]
-    MCP --> N[Notion API]
-    MCP --> J[Jira Cloud API]
-    MCP --> C[Google Calendar API]
-    MCP --> TL[Task Ledger MCP Server<br/>built-in, Postgres-backed]
-    WK -- feedback --> MEM[Semantic Routing Memory]
-    MEM --> DB
+```
+you paste text ─┐
+                ▼
+        FastAPI API ── auth, rate limit
+                │ starts a workflow
+                ▼
+        Temporal worker ── owns the whole batch lifecycle
+                │
+                ├─ extract: LangGraph + LLM (or offline parser)
+                │   └─ schema-validated items with verbatim source quotes
+                ├─ route: semantic memory adjusts tool + confidence
+                │   └─ learns from every approve / override / reject
+                ├─ wait: human review, 7-day expiry
+                │   └─ operator edits payloads, approves, or dismisses
+                └─ execute: one activity per approved item
+                    ├─ SHA-256 idempotency check → no duplicates on retry
+                    ├─ Jira / Notion / Calendar / Task Ledger MCP
+                    └─ execution log with URL, latency, status
 ```
 
-| Layer | Choice | Why |
+Each stage survives crashes: Temporal replays the workflow instead of losing
+it, the idempotency hash prevents a replayed execution from filing the same
+ticket twice, and an approval wait that never gets a decision expires
+after seven days instead of piling up.
+
+| Choice | Where | Why |
 |---|---|---|
-| Durable orchestration | Temporal | Crash-safe workflows; 7-day approval wait; per-item execution with retry; no duplicate side effects |
-| Extraction | LangGraph + structured LLM output (Gemini / OpenAI), deterministic offline fallback | Works with or without an LLM key; schema-validated output before anything executes |
-| Execution | MCP dispatch layer (mcp 2.x) + official REST APIs | The Task Ledger is a genuine MCP server (`call_tool` dispatch, stdio entrypoint); external connectors call official APIs through a shared retry transport |
-| Idempotency | SHA-256(batch, item, tool, canonical payload) checked against `execution_logs` | Replays and retries can never double-create |
-| Auth | Single operator API key, injected server-side by the Next edge proxy | Key never ships to the browser; constant-time comparison; per-IP rate limits |
-| Schema | Alembic migrations | Versioned, reproducible; app refuses to start on an unmigrated database |
-| Memory | Embedding-backed routing feedback (Gemini/OpenAI embeddings, cosine similarity) | Learns from confirmations *and* overrides; degrades to keyword matching offline |
+| Temporal | orchestration | Durable workflows; per-item retry; the 7-day approval wait lives here, not in a process |
+| LangGraph | extraction | Stateless pipeline invoked from one activity; schema-validated output before anything executes |
+| MCP 2.x | Task Ledger | The ledger is a real MCP server — tools dispatch through `call_tool`, and it can run standalone over stdio |
+| Alembic | schema | Versioned migrations; the app refuses to boot on an unmigrated database |
+| Embeddings | routing memory | Gemini or OpenAI vectors, cosine similarity over your decision history; keyword matching when no key is set |
 
----
+The extractor uses Google Gemini or OpenAI when a key is configured and a
+deterministic local parser otherwise, so the full flow works on a fresh
+clone with zero credentials — in that mode no text ever leaves the machine.
 
-## Quick start (local development)
+## Quick start
 
-Prerequisites: Docker, Python 3.11+, Node 18+.
+Requirements: Docker, Python 3.11+, Node 18+.
 
 ```bash
+git clone <this repo> && cd kairos
 ./scripts/start.sh
 ```
 
-Launches PostgreSQL 16 (port 5435), Redis (6381), Temporal (7234, UI at
-8234), applies Alembic migrations, then starts the Temporal worker, the
-FastAPI API on `http://localhost:8000`, and the dashboard at
-`http://localhost:3000`.
+The script starts PostgreSQL (5435), Temporal (7234, UI on 8234), applies
+migrations, then launches the worker, the API on
+[localhost:8000](http://localhost:8000) (docs at `/docs`), and the dashboard
+on [localhost:3000](http://localhost:3000).
 
-In development (no `API_KEY` set), auth is disabled and the system runs
-end to end with zero configuration. Add provider keys in **Settings** to
-enable live LLM extraction and real connector execution.
+Open the dashboard, click a sample, press **Extract actions**, and approve
+the items to watch them execute. With no tool credentials saved, enable
+**Sandbox** in Settings first — otherwise the connectors correctly refuse
+to make live calls.
 
-## Test suite
+To stop everything: the script traps Ctrl-C and tears down its processes;
+`docker compose -f docker-compose.dev.yml down` stops the infrastructure.
+
+## Configuration
+
+Local settings live in `.env` (copy from `.env.example`). Anything saved in
+the Settings UI is encrypted into PostgreSQL instead.
+
+| Variable | Required | Purpose |
+|---|---|---|
+| `POSTGRES_PASSWORD` | prod | Database password — never the dev default |
+| `API_KEY` | prod | Operator key (≥16 chars) guarding every API route |
+| `ENCRYPTION_KEY` | prod | 44-char Fernet key for the credential vault |
+| `CORS_ORIGINS` | prod | Exact allowed origins for the published frontend |
+| `GOOGLE_API_KEY` / `OPENAI_API_KEY` | optional | Enables LLM extraction and semantic memory |
+| `NOTION_API_KEY`, `JIRA_*`, `GOOGLE_CALENDAR_ACCESS_TOKEN` | optional | Live tool execution |
+| `SANDBOX_MODE` | optional | `true` simulates all executions, no side effects |
+| `LANGFUSE_*` | optional | Tracing to a Langfuse host |
+
+Generate the two secrets:
+
+```bash
+python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+openssl rand -base64 24
+```
+
+In production the config rejects a missing API key, a reused dev encryption
+key, or `DEBUG=true` at startup — the process refuses to boot rather than
+run wide open.
+
+## Testing
 
 ```bash
 ./scripts/test.sh
 ```
 
-Runs the full battle suite (48 tests) against live Postgres and Temporal:
-schema & payload validation, MCP tool dispatch and idempotency
-deduplication, extraction and prompt-injection defense, routing-memory
-learning loop, durable workflow lifecycle (approval signal, rejections,
-unknown-item protection), API lifecycle, end-to-end integration,
-auth/rate-limit/CORS security, and connector retry resilience.
+54 tests run against live PostgreSQL and Temporal: schema and payload
+validation, MCP tool dispatch, idempotency deduplication, extraction and
+prompt-injection defense, the routing-memory learning loop, workflow
+lifecycle (approval signal, rejections, stale-signal protection, expiry),
+the API surface, end-to-end integration, auth/rate-limit/CORS, connector
+retry, secret redaction, and the batch-deletion guards. CI runs the same
+suite plus frontend lint, typecheck, and build on every push.
 
 ## Production deployment
 
@@ -83,123 +122,82 @@ cp .env.example .env   # fill in the required secrets
 docker compose -f docker-compose.prod.yml --env-file .env up -d --build
 ```
 
-The production stack runs the API, worker, Postgres, and Temporal on an
-internal bridge network — only the frontend is published (default
-`http://localhost:3000`). A one-shot migrate container applies migrations
-and gates startup on success. Required environment variables (missing
-values fail loudly at compose interpolation):
+The stack runs the API, worker, PostgreSQL, and Temporal on an internal
+bridge network — only the frontend is published. A one-shot migrate
+container applies `alembic upgrade head` and gates startup on success.
+Missing required variables fail at compose interpolation, before anything
+boots half-configured.
 
-| Variable | Purpose |
-|---|---|
-| `POSTGRES_PASSWORD` | Database password (never the dev default) |
-| `API_KEY` | Operator API key injected by the proxy (≥16 chars) |
-| `ENCRYPTION_KEY` | Fresh 44-char Fernet key for the OAuth vault |
+Both images are multi-stage, run as non-root users, and have healthchecks.
+The frontend is a Next.js standalone build whose edge proxy injects the API
+key server-side: browsers never hold it, and the backend is unreachable
+from outside the Docker network.
 
-Optional: connector tokens (`NOTION_API_KEY`, `JIRA_API_TOKEN`,
-`JIRA_EMAIL`, `JIRA_DOMAIN`, `GOOGLE_CALENDAR_ACCESS_TOKEN`), LLM keys
-(`GOOGLE_API_KEY` / `OPENAI_API_KEY`), observability (`LANGFUSE_*`),
-`CORS_ORIGINS` for the published frontend origin.
+## Deployment scope
 
-Generate secrets:
+Kairos is built for one operator. Confirm this matches your use before
+going live:
 
-```bash
-python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
-openssl rand -base64 24
-```
+- **One shared key.** Anyone who can reach the dashboard holds full rights:
+  every batch, verdict, and side effect is visible to everyone, and the
+  linked provider accounts are pooled.
+- **One credential per provider.** The vault stores a single Notion, Jira,
+  Calendar, and LLM connection. Individual visitors cannot attach their own.
+- **One memory.** Suggestion quality is learned for the deployment as a
+  whole, not per person.
 
-With `APP_ENV=production` the API enforces: API key present, `DEBUG=false`,
-fresh encryption key, JSON logs, no OpenAPI/docs endpoints, HSTS headers.
-
-## Key subsystems
-
-**Human verification workbench.** Review cards show the verbatim source
-snippet, speaker, assignee, confidence, and pre-filled tool payload.
-Hovering a card highlights the exact source line. Decisions: approve,
-modify payload or destination tool, or reject — individually or in bulk.
-
-**Task Ledger MCP server.** A real MCP server (`mcp` 2.x SDK) exposing
-`create_task`, `list_tasks`, `complete_task`, `delete_task`, backed by
-Postgres. In-process execution goes through the same `call_tool` dispatch
-path an external MCP client would use, and it can be run standalone:
-
-```bash
-python -m app.mcp.servers.task_ledger   # stdio MCP server
-```
-
-**Idempotency engine.** Before any execution, `SHA-256(batch_id +
-item_id + tool + canonical_payload_json)` is checked against successful
-`execution_logs`; a hit returns the recorded result without re-firing.
-
-**Routing memory.** Every decision is stored (with an embedding when an
-LLM key is configured). Similar past items reinforce confirmed routes,
-flip suggestions toward overridden destinations, and penalize rejected
-ones — with reasons surfaced in the review UI.
-
-**Connector resilience.** A shared httpx transport retries 408/429/5xx
-and transient network errors with jittered exponential backoff,
-honoring `Retry-After` — below the activity level, so the idempotency
-hash stays stable.
+Giving real users isolated sign-ins and per-user OAuth is a product change —
+per-person flows, a `user_id` column through every table, per-person memory —
+not a settings toggle. If that is the goal, plan it as a follow-on effort
+built on this codebase rather than expecting configuration to get there.
 
 ## Repository layout
 
 ```
 backend/
   app/api/        REST endpoints (batches, history, connectors)
-  app/core/       auth, security vault, rate limiting, logging, telemetry
-  app/db/         SQLAlchemy models, async sessions, pool policy
-  app/mcp/        connector layer, retry transport, Task Ledger MCP server
-  app/pipelines/  LangGraph ingest/extract/route, semantic memory
+  app/core/       auth, vault, rate limiting, logging, telemetry, redaction
+  app/db/         models, sessions, pool policy
+  app/mcp/        connectors, retry transport, Task Ledger MCP server
+  app/pipelines/  LangGraph ingest/extract/route, routing memory
   app/temporal/   workflow, activities, worker
-  alembic/        versioned migrations
-  tests/          battle test suites
-frontend/         Next.js 16 dashboard + edge API proxy
+  alembic/        migrations
+  tests/          the battle suite
+frontend/         Next.js dashboard + server-side API proxy
 scripts/          start.sh, test.sh
-docker-compose.dev.yml   local infrastructure
-docker-compose.prod.yml  production stack
-.github/workflows/       CI (backend suite + frontend lint/typecheck/build)
+docker-compose.dev.yml    local infrastructure
+docker-compose.prod.yml   production stack
+.github/workflows/ci.yml  CI
 ```
 
 ## Security notes
 
-- OAuth/API credentials are AES-256 (Fernet) encrypted at rest; decryption
-  happens in memory at execution time only, and credential-shaped strings
-  are redacted from error text before it can reach logs.
-- All pasted text is treated as untrusted data: length-guarded, wrapped
-  in explicit XML delimiters, and nothing executes without human approval.
+- Connector and LLM credentials are AES-256-encrypted at rest; decryption
+  happens in memory during approved executions only, and credential-shaped
+  strings are stripped from error text before anything is logged.
+- Submitted text is untrusted input: length-limited, wrapped in explicit
+  delimiters, and parsed as data. An injected line in a transcript can at
+  worst produce a suspicious-looking card for the operator to dismiss.
 - Per-IP rate limits: 60 reads/min, 10 writes/min; health probes exempt.
-- Strict CORS (exact origins), security headers (nosniff, DENY, HSTS in
-  production), JSON logs, no stack traces in responses.
-- `DELETE /api/history/batches/{id}` erases a batch and its dependent
-  records (operator erasure rights).
+- Exact-origin CORS, nosniff/DENY/HSTS headers, JSON logs, no stack traces
+  in responses; `/docs` disabled in production.
+- `DELETE /api/history/batches/{id}` erases a batch and its records;
+  deleting a batch still mid-workflow returns 409 instead of corrupting
+  state.
 
-## Deployment scope — read before going live
+Found something sensitive? See [SECURITY.md](SECURITY.md) for how to report
+it responsibly.
 
-Kairos is a **single-operator** system. This is a design boundary, not a
- limitation to fix later; verify it matches your intended usage:
+## Contributing
 
-- **One operator account.** Authentication is one shared API key
-  (`API_KEY`), injected server-side by the frontend proxy. There are no
-  user accounts, sessions, or per-user permissions.
-- **One credential set per tool.** The OAuth vault stores *one* Notion,
-  Jira, and Calendar connection (unique per provider), *one* Gemini/
-  OpenAI key. If you deploy this for multiple people, they all share the
-  same connected accounts, the same batches, and the same execution
-  history — everyone who can reach the dashboard sees everything.
-- **No per-user routing memory.** The semantic routing memory learns one
-  operator's preferences; with several users it would blend them.
-
-If you need true multi-user operation (each person connecting their own
-Notion/Jira/Calendar accounts), that is a product-scale change:
-per-user OAuth flows, a `user_id` dimension through every table, per-user
-API keys or login, and per-user memory. Treat that as a follow-on
-project, not a configuration change.
-
-**Ready for:** a personal production deployment, a small team that
-explicitly shares one set of tool connections, or a portfolio/interview
-demo with real side effects.
-**Not ready for:** public signups, tenant isolation, or compliance
-regimes requiring per-user data separation.
+Bug reports and pull requests are welcome. The bar to clear: accompany
+behavior changes with tests, write conventional commit messages, and argue
+the case for any new dependency. Run `./scripts/test.sh` plus the frontend
+checks locally; CI will run them again either way.
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+MIT — [LICENSE](LICENSE). `PRIVACY.md` and `TERMS.md` adapt documents from
+the [General Legal](https://github.com/General-Legal/legal-templates) library
+(CC0); per that library's notice they are drafting starting points, not
+counsel.

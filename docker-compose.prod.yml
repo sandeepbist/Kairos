@@ -115,7 +115,8 @@ services:
 
   frontend:
     build:
-      context: ./frontend
+      context: .
+      dockerfile: frontend/Dockerfile
       args:
         NEXT_PUBLIC_TEMPORAL_UI_URL: ${NEXT_PUBLIC_TEMPORAL_UI_URL:-}
         NEXT_PUBLIC_API_DOCS_URL: ${NEXT_PUBLIC_API_DOCS_URL:-}
