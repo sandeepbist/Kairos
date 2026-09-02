@@ -143,3 +143,34 @@ async def test_adaptive_routing_memory_learning_loop():
     # Memory should have calibrated routing to Jira
     assert budget_item["suggested_tool"] == "jira"
     assert "Learned preference" in budget_item.get("routing_reason", "")
+
+
+@pytest.mark.asyncio
+async def test_hybrid_matching_and_recency_weights():
+    """Memory matches via keyword backstop when embeddings are absent, and
+    newer feedback outweighs older feedback for the same description."""
+    import uuid as _uuid
+    from app.pipelines.memory import routing_memory
+
+    async def record(desc, suggested, final, overridden, n=1):
+        for _ in range(n):
+            await routing_memory.record_feedback(
+                item_id=str(_uuid.uuid4()), batch_id=str(_uuid.uuid4()),
+                item_description=desc, suggested_tool=suggested,
+                final_tool=final, was_overridden=overridden,
+            )
+
+    # Old override: notion -> jira for budget items (older)
+    record("Quarterly financial budget reconciliation task", "notion", "jira", True)
+    # Recent confirmations: budget tasks belong in jira (newest)
+    record("Annual budget planning for finance team", "jira", "jira", False, n=2)
+
+    decision = await routing_memory.query_routing_preference(
+        description="Budget reconciliation for next quarter",
+        initial_tool="notion",
+    )
+    assert decision["suggested_tool"] == "jira"
+    assert "Learned preference" in (decision.get("reason") or "")
+    assert decision.get("neighbors"), "few-shot neighbors must be surfaced"
+    nb = decision["neighbors"][0]
+    assert set(nb) >= {"description", "final_tool", "similarity", "matched_by"}

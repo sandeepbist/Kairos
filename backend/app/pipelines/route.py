@@ -35,6 +35,22 @@ async def route_node(state: AgentState) -> dict[str, Any]:
         updated_item["confidence"] = round(calibrated_confidence, 2)
         if mem_decision.get("reason"):
             updated_item["routing_reason"] = mem_decision["reason"]
+        # Matched precedent (few-shot context). Kept on the item so later
+        # stages — prompts, UI tooltips, or the routing-memory evals — can
+        # show *why* a suggestion was calibrated, not just that it was.
+        neighbors = mem_decision.get("neighbors") or []
+        if neighbors:
+            updated_item["routing_precedent"] = [
+                {
+                    "description": nb["description"][:80],
+                    "suggested_tool": nb["suggested_tool"],
+                    "final_tool": nb["final_tool"],
+                    "was_overridden": nb["was_overridden"],
+                    "similarity": nb["similarity"],
+                    "matched_by": nb["matched_by"],
+                }
+                for nb in neighbors
+            ]
 
         routed_items.append(updated_item)
 

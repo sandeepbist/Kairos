@@ -43,6 +43,8 @@ STOPWORDS = {
 
 # Number of votes required before memory overrides the extractor's suggestion
 _OVERRIDE_VOTE_THRESHOLD = 2
+# How many matched neighbors are surfaced as few-shot routing context
+_FEW_SHOT_K = 3
 # How many recent feedback rows participate in matching
 _MATCH_WINDOW = 1000
 # Minimum cosine similarity for an embedding to count as a neighbor
@@ -209,34 +211,60 @@ class RoutingMemory:
 
         query_embedding = await self._embedding_service.embed(description)
 
-        tool_votes: dict[str, int] = {}
+        tool_votes: dict[str, float] = {}
         penalized_tools: set[str] = set()
         matched = 0
+        neighbors: list[dict[str, Any]] = []
 
-        for entry in feedback_list:
+        # Hybrid similarity: cosine over embeddings when both sides have
+        # them, with keyword overlap as a lexical backstop so an embedding
+        # gap never zeroes out a genuinely related past decision. Recency
+        # weights votes — newest feedback is the strongest signal — using
+        # a linear decay across the window (index 0 = most recent).
+        n = len(feedback_list)
+        for idx, entry in enumerate(feedback_list):
             entry_embedding = entry.get("embedding")
+            similarity = 0.0
+            matched_by: str | None = None
             if query_embedding and entry_embedding:
                 similarity = cosine_similarity(query_embedding, entry_embedding)
-                if similarity < _SIMILARITY_THRESHOLD:
-                    continue
-            else:
-                # Offline fallback: keyword overlap (>= 2 shared domain terms)
-                overlap = len(
-                    extract_keywords(description)
-                    & extract_keywords(entry["item_description"])
-                )
-                if overlap < 2:
-                    continue
+                if similarity >= _SIMILARITY_THRESHOLD:
+                    matched_by = "embedding"
+            overlap = len(
+                extract_keywords(description)
+                & extract_keywords(entry["item_description"])
+            )
+            if matched_by is None and overlap >= 2:
+                matched_by = "keyword"
+
+            if matched_by is None:
+                continue
+
+            # Linear recency weight: 1.0 for the newest entry down to 0.2
+            # for the oldest in the window.
+            recency = 0.2 + 0.8 * (1 - idx / max(n - 1, 1))
+            weight = recency * (2.0 if matched_by == "embedding" else 1.0)
 
             matched += 1
+            neighbors.append({
+                "description": entry["item_description"],
+                "suggested_tool": entry["suggested_tool"],
+                "final_tool": entry["final_tool"],
+                "was_overridden": entry["was_overridden"],
+                "similarity": round(similarity, 3),
+                "matched_by": matched_by,
+                "weight": round(weight, 3),
+            })
             if entry["was_overridden"]:
                 penalized_tools.add(entry["suggested_tool"])
                 if entry["final_tool"] != "rejected":
                     tool_votes[entry["final_tool"]] = (
-                        tool_votes.get(entry["final_tool"], 0) + 2
+                        tool_votes.get(entry["final_tool"], 0.0) + 2 * weight
                     )
             else:
-                tool_votes[entry["final_tool"]] = tool_votes.get(entry["final_tool"], 0) + 1
+                tool_votes[entry["final_tool"]] = (
+                    tool_votes.get(entry["final_tool"], 0.0) + 1 * weight
+                )
 
         logger.debug(
             "Routing memory matched %d neighbors for %r (embedding=%s)",
@@ -245,19 +273,27 @@ class RoutingMemory:
             bool(query_embedding),
         )
 
+        # Top neighbors (highest weight first), capped, for few-shot
+        # context in the routing prompt rather than post-hoc override only.
+        neighbors.sort(key=lambda nb: nb["weight"], reverse=True)
+        few_shot = neighbors[:_FEW_SHOT_K]
+
         if tool_votes:
             best_tool = max(tool_votes, key=tool_votes.get)
-            if tool_votes[best_tool] >= _OVERRIDE_VOTE_THRESHOLD and best_tool != initial_tool.lower():
+            best_votes = tool_votes[best_tool]
+            if best_votes >= _OVERRIDE_VOTE_THRESHOLD * 0.5 and best_tool != initial_tool.lower():
                 return {
                     "suggested_tool": best_tool,
                     "confidence_adjustment": 0.15,
                     "reason": f"Learned preference: past similar items were routed to {best_tool}",
+                    "neighbors": few_shot,
                 }
             if best_tool == initial_tool.lower():
                 return {
                     "suggested_tool": initial_tool,
                     "confidence_adjustment": 0.1,
                     "reason": "Reinforced: operator consistently confirms this routing",
+                    "neighbors": few_shot,
                 }
 
         if initial_tool.lower() in penalized_tools:
@@ -265,9 +301,15 @@ class RoutingMemory:
                 "suggested_tool": initial_tool,
                 "confidence_adjustment": -0.25,
                 "reason": "Penalized: operator previously rejected this tool for similar tasks",
+                "neighbors": few_shot,
             }
 
-        return {"suggested_tool": initial_tool, "confidence_adjustment": 0.0, "reason": None}
+        return {
+            "suggested_tool": initial_tool,
+            "confidence_adjustment": 0.0,
+            "reason": None,
+            "neighbors": few_shot,
+        }
 
 
 # Global memory manager
