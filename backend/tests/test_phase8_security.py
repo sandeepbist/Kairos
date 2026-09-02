@@ -317,3 +317,55 @@ def test_oauth_token_size_caps():
         SaveOAuthTokenRequest(provider="x" * 60, access_token="T" * 32)
     ok = SaveOAuthTokenRequest(provider="notion", access_token="T" * 8_192)
     assert ok.provider == "notion"
+
+
+@pytest.mark.asyncio
+async def test_extraction_provider_chain_fallback_and_reask():
+    """Provider chain: failure falls through to the next provider; a schema
+    error gets one reask before moving on; success returns items."""
+    from app.pipelines.extract import _invoke_extraction_llm
+    from app.pipelines.extract import ExtractedActionItemSchema
+
+    class FakeLLM:
+        def __init__(self, behavior):
+            self.behavior = behavior
+            self.calls = 0
+
+        def with_structured_output(self, _schema):
+            return self
+
+        async def ainvoke(self, messages):
+            self.calls += 1
+            if self.behavior == "fail":
+                raise RuntimeError("quota exceeded")
+            if self.behavior == "reask_then_ok" and self.calls == 1:
+                raise ValueError("validation: confidence required")
+            good = ExtractedActionItemSchema(
+                description="File the ticket", suggested_tool="jira",
+                source_snippet="file the ticket", confidence=0.9,
+            )
+            from app.pipelines.extract import ExtractedActionItemList
+            return ExtractedActionItemList(items=[good])
+
+    # 1. Gemini fails hard -> OpenAI succeeds, error records the fallthrough
+    gemini = FakeLLM("fail")
+    openai = FakeLLM("ok")
+    items, errors = await _invoke_extraction_llm(
+        "text", [("gemini", gemini), ("openai", openai)], "sys")
+    assert len(items) == 1 and items[0]["suggested_tool"] == "jira"
+    assert gemini.calls == 1 and openai.calls == 1
+    assert any("gemini" in e for e in errors)
+    assert not any("sk-" in e or "AIza" in e for e in errors)
+
+    # 2. Reask: first call fails validation, second succeeds on the same
+    # provider; the reask note is informational, not a failure
+    flaky = FakeLLM("reask_then_ok")
+    items, errors = await _invoke_extraction_llm("text", [("openai", flaky)], "sys")
+    assert flaky.calls == 2 and len(items) == 1
+    assert all("reasking" in e for e in errors)  # informational only
+    assert not any("failed:" in e for e in errors)  # no hard failure recorded
+
+    # 3. Whole chain fails -> empty items, errors recorded per provider
+    a, b = FakeLLM("fail"), FakeLLM("fail")
+    items, errors = await _invoke_extraction_llm("text", [("a", a), ("b", b)], "sys")
+    assert items == [] and len(errors) == 2
