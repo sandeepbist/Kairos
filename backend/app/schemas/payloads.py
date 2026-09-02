@@ -41,4 +41,27 @@ class TaskLedgerPayload(BaseModel):
     due_date: str | None = Field(default=None, description="Optional target completion date")
 
 
-ToolPayloadUnion = Union[JiraPayload, CalendarPayload, NotionPayload, TaskLedgerPayload]
+class LinearPayload(BaseModel):
+    """Payload for Linear issue creation."""
+    title: str = Field(..., description="Issue title")
+    description: str = Field(default="", description="Issue description")
+    priority: Literal["low", "medium", "high"] = Field(default="medium")
+
+
+class TodoistPayload(BaseModel):
+    """Payload for Todoist task creation."""
+    content: str = Field(..., description="Task content")
+    description: str = Field(default="", description="Task notes")
+    priority: Literal["low", "medium", "high"] = Field(default="medium")
+    due_date: str | None = Field(default=None, description="Due date (natural language or ISO)")
+
+
+class EmailDraftPayload(BaseModel):
+    """Payload for Gmail draft creation (operator sends manually)."""
+    subject: str = Field(..., description="Draft subject")
+    body: str = Field(default="", description="Draft body")
+    to: str | None = Field(default=None, description="Recipient email (optional)")
+    cc: str | None = Field(default=None, description="Cc email (optional)")
+
+
+ToolPayloadUnion = Union[JiraPayload, CalendarPayload, NotionPayload, TaskLedgerPayload, LinearPayload, TodoistPayload, EmailDraftPayload]

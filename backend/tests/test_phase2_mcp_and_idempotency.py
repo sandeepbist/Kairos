@@ -250,3 +250,86 @@ async def test_connectors_status_overview():
     assert "jira" in status
     assert "calendar" in status
     assert status["task_ledger"]["healthy"] is True
+
+
+# ---------------------------------------------------------
+# Test 4: New sinks — Linear, Todoist, Email draft
+# ---------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_linear_connector_sandbox():
+    connector = mcp_client_manager.get_connector("linear")
+    result = await connector.execute(
+        {"title": "Fix the onboarding funnel", "priority": "high"},
+        sandbox_mode=True,
+    )
+    assert result.status == "success"
+    assert result.tool == "linear"
+    assert "linear.app" in result.external_url
+
+
+@pytest.mark.asyncio
+async def test_todoist_connector_sandbox():
+    connector = mcp_client_manager.get_connector("todoist")
+    result = await connector.execute(
+        {"content": "Buy a new keyboard", "due_date": "next Friday"},
+        sandbox_mode=True,
+    )
+    assert result.status == "success"
+    assert "todoist.com" in result.external_url
+
+
+@pytest.mark.asyncio
+async def test_email_draft_connector_sandbox():
+    connector = mcp_client_manager.get_connector("email_draft")
+    result = await connector.execute(
+        {"subject": "Contract renewal", "body": "Hi there", "to": "ops@company.com"},
+        sandbox_mode=True,
+    )
+    assert result.status == "success"
+    assert "mail.google.com" in (result.external_url or "")
+
+
+@pytest.mark.asyncio
+async def test_new_tool_keyword_routing():
+    """Extractor routes Linear/Todoist/email-draft intent correctly."""
+    from app.pipelines.extract import deterministic_fallback_extractor as dfe
+
+    items = dfe("Priya: Please file the onboarding bug as a Linear issue.", "meeting_transcript")
+    assert any(i["suggested_tool"] == "linear" for i in items)
+
+    items2 = dfe("Raj: Add the grocery run to my Todoist today.", "general_notes")
+    assert any(i["suggested_tool"] == "todoist" for i in items2)
+
+    items3 = dfe("Maya: Please draft an email to the vendor about the renewal.", "meeting_transcript")
+    assert any(i["suggested_tool"] == "email_draft" for i in items3)
+
+
+@pytest.mark.asyncio
+async def test_email_draft_reuses_gmail_vault_alias():
+    """The connectors status maps email_draft's connection to the gmail
+    vault provider."""
+    from starlette.testclient import TestClient
+    from app.main import app
+    from app.db.session import async_session_factory as factory
+    from app.db.models import OAuthTokenModel
+    from app.core.security import encrypt_token
+    import uuid as _uuid
+
+    async with factory() as session:
+        session.add(OAuthTokenModel(
+            id=str(_uuid.uuid4()), provider="gmail",
+            access_token_enc=encrypt_token("ya29.dummy-gmail-token-1234"),
+        ))
+        await session.commit()
+
+    with TestClient(app) as client:
+        res = client.get("/api/connectors/status")
+        data = res.json()
+        assert data["connectors"]["email_draft"]["oauth_connected"] is True
+
+    async with factory() as session:
+        from sqlalchemy import delete as _delete
+
+        await session.execute(_delete(OAuthTokenModel).where(OAuthTokenModel.provider == "gmail"))
+        await session.commit()

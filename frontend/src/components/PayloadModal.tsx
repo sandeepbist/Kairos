@@ -230,6 +230,108 @@ export function PayloadModal({
             </>
           )}
 
+          {/* LINEAR */}
+          {targetTool === "linear" && (
+            <>
+              <div>
+                <label className="field-label">Issue title</label>
+                <input
+                  className="input"
+                  value={str("title")}
+                  onChange={(e) => handleChange("title", e.target.value)}
+                />
+              </div>
+              <div>
+                <label className="field-label">Description</label>
+                <textarea
+                  className="input"
+                  style={{ resize: "vertical" }}
+                  rows={3}
+                  value={str("description")}
+                  onChange={(e) => handleChange("description", e.target.value)}
+                />
+              </div>
+              <div>
+                <label className="field-label">Priority</label>
+                <select
+                  className="select"
+                  value={str("priority", "medium")}
+                  onChange={(e) => handleChange("priority", e.target.value)}
+                >
+                  <option value="low">Low</option>
+                  <option value="medium">Medium</option>
+                  <option value="high">High</option>
+                </select>
+              </div>
+            </>
+          )}
+
+          {/* TODOIST */}
+          {targetTool === "todoist" && (
+            <>
+              <div>
+                <label className="field-label">Task content</label>
+                <input
+                  className="input"
+                  value={str("content") || str("title")}
+                  onChange={(e) => handleChange("content", e.target.value)}
+                />
+              </div>
+              <div>
+                <label className="field-label">Description</label>
+                <textarea
+                  className="input"
+                  style={{ resize: "vertical" }}
+                  rows={3}
+                  value={str("description")}
+                  onChange={(e) => handleChange("description", e.target.value)}
+                />
+              </div>
+              <div>
+                <label className="field-label">Due date (natural language ok)</label>
+                <input
+                  className="input mono"
+                  value={str("due_date")}
+                  onChange={(e) => handleChange("due_date", e.target.value)}
+                  placeholder="next Friday"
+                />
+              </div>
+            </>
+          )}
+
+          {/* EMAIL DRAFT */}
+          {targetTool === "email_draft" && (
+            <>
+              <div>
+                <label className="field-label">To (optional)</label>
+                <input
+                  className="input mono"
+                  value={str("to")}
+                  onChange={(e) => handleChange("to", e.target.value)}
+                  placeholder="name@company.com"
+                />
+              </div>
+              <div>
+                <label className="field-label">Subject</label>
+                <input
+                  className="input"
+                  value={str("subject")}
+                  onChange={(e) => handleChange("subject", e.target.value)}
+                />
+              </div>
+              <div>
+                <label className="field-label">Body</label>
+                <textarea
+                  className="input"
+                  style={{ resize: "vertical" }}
+                  rows={4}
+                  value={str("body")}
+                  onChange={(e) => handleChange("body", e.target.value)}
+                />
+              </div>
+            </>
+          )}
+
           {/* TASK LEDGER */}
           {targetTool === "task_ledger" && (
             <>

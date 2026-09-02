@@ -14,6 +14,9 @@ from .connectors import (
     NotionConnector,
     JiraConnector,
     CalendarConnector,
+    LinearConnector,
+    TodoistConnector,
+    EmailDraftConnector,
 )
 
 
@@ -26,6 +29,9 @@ class McpClientManager:
             "notion": NotionConnector(),
             "jira": JiraConnector(),
             "calendar": CalendarConnector(),
+            "linear": LinearConnector(),
+            "todoist": TodoistConnector(),
+            "email_draft": EmailDraftConnector(),
         }
 
     def get_connector(self, tool_name: str) -> BaseConnector:

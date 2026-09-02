@@ -17,6 +17,9 @@ const TOOL_NAMES: Record<TargetTool, string> = {
   calendar: "Calendar",
   notion: "Notion",
   task_ledger: "Ledger",
+  linear: "Linear",
+  todoist: "Todoist",
+  email_draft: "Email draft",
 };
 
 const CONFIDENCE_TIER = (c: number): "high" | "mid" | "low" =>

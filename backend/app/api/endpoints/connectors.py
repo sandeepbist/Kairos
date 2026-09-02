@@ -36,12 +36,20 @@ async def get_connectors_status(
     result = await db.execute(tokens_query)
     connected_providers = set(result.scalars().all())
 
+    # Vault provider aliases: a tool may authenticate via a differently
+    # named provider credential (email_draft uses the gmail token).
+    tool_provider_aliases = {
+        "calendar": {"google_calendar", "calendar"},
+        "email_draft": {"gmail", "email_draft"},
+    }
     connectors_info = {}
     for tool_name, status_dict in mcp_statuses.items():
+        aliases = tool_provider_aliases.get(tool_name, {tool_name})
+        connected = bool(aliases & connected_providers) or tool_name == "task_ledger"
         connectors_info[tool_name] = {
             "healthy": status_dict["healthy"],
             "sandbox_mode": settings.SANDBOX_MODE,
-            "oauth_connected": tool_name in connected_providers or tool_name == "task_ledger",
+            "oauth_connected": connected,
             "type": "custom_internal" if tool_name == "task_ledger" else "official_mcp",
         }
 
@@ -70,7 +78,7 @@ async def save_oauth_token(
 ):
     """Encrypts and stores user OAuth or LLM API credentials in Postgres vault."""
     provider = request.provider.lower().strip()
-    valid_providers = ["notion", "jira", "google_calendar", "gemini", "google_ai", "openai"]
+    valid_providers = ["notion", "jira", "google_calendar", "gmail", "linear", "todoist", "gemini", "google_ai", "openai"]
     if provider not in valid_providers:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,

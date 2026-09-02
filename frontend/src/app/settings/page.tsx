@@ -26,6 +26,9 @@ const TOOL_CARDS: Array<{
   { tool: "notion", name: "Notion", detail: "Creates database pages via Notion API v1.", protocol: "api.notion.so" },
   { tool: "jira", name: "Jira", detail: "Files issues via Jira Cloud REST v3.", protocol: "atlassian.net" },
   { tool: "calendar", name: "Google Calendar", detail: "Creates events with reminders via Calendar API v3.", protocol: "googleapis.com" },
+  { tool: "linear", name: "Linear", detail: "Files issues via the Linear GraphQL API.", protocol: "linear.app" },
+  { tool: "todoist", name: "Todoist", detail: "Creates tasks via the Todoist REST v2 API.", protocol: "todoist.com" },
+  { tool: "email_draft", name: "Email draft", detail: "Prepares a Gmail draft you review and send. Uses the Gmail credential.", protocol: "gmail drafts api" },
   { tool: "task_ledger", name: "Task Ledger", detail: "Built-in MCP server, backed by Postgres. Always available.", protocol: "mcp · internal" },
 ];
 
@@ -117,6 +120,9 @@ export default function SettingsPage() {
   const isNotionConnected = Boolean(status?.connectors?.notion?.oauth_connected);
   const isJiraConnected = Boolean(status?.connectors?.jira?.oauth_connected);
   const isCalendarConnected = Boolean(status?.connectors?.calendar?.oauth_connected);
+  const isGmailConnected = Boolean(status?.connectors?.email_draft?.oauth_connected);
+  const isLinearConnected = Boolean(status?.connectors?.linear?.oauth_connected);
+  const isTodoistConnected = Boolean(status?.connectors?.todoist?.oauth_connected);
 
   const credentialCards: CredentialConfig[] = [
     {
@@ -161,6 +167,31 @@ export default function SettingsPage() {
       hint: "OAuth access token with calendar.events scope.",
       placeholder: "OAuth access token",
       connectedKey: () => isCalendarConnected,
+    },
+    {
+      provider: "gmail",
+      label: "Gmail",
+      hint: "OAuth token with gmail.readonly + compose scopes. Powers the Gmail poller and email-draft actions.",
+      placeholder: "OAuth access token",
+      connectedKey: () => isGmailConnected,
+    },
+    {
+      provider: "linear",
+      label: "Linear",
+      hint: "API key from Linear settings (Security & access).",
+      linkLabel: "linear.app/settings",
+      linkUrl: "https://linear.app/settings",
+      placeholder: "Linear API key",
+      connectedKey: () => isLinearConnected,
+    },
+    {
+      provider: "todoist",
+      label: "Todoist",
+      hint: "API token from Todoist settings (Integrations).",
+      linkLabel: "todoist.com/psettings/integrations",
+      linkUrl: "https://todoist.com/psettings/integrations",
+      placeholder: "Todoist API token",
+      connectedKey: () => isTodoistConnected,
     },
   ];
 

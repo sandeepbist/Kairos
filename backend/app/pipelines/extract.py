@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 class ExtractedActionItemSchema(BaseModel):
     """Pydantic schema for individual extracted action item."""
     description: str = Field(..., description="Clear, actionable commitment or task description")
-    suggested_tool: Literal["notion", "jira", "calendar", "task_ledger"] = Field(..., description="Recommended destination tool")
+    suggested_tool: Literal["notion", "jira", "calendar", "task_ledger", "linear", "todoist", "email_draft"] = Field(..., description="Recommended destination tool")
     suggested_due_date: str | None = Field(default=None, description="ISO formatted due date if mentioned (e.g. 2026-09-01)")
     suggested_assignee: str | None = Field(default=None, description="Explicit assignee or owner name")
     speaker: str | None = Field(default=None, description="Speaker name ONLY if labeled in source, null otherwise")
@@ -45,6 +45,9 @@ def deterministic_fallback_extractor(
 
     # Patterns for intent detection
     calendar_keywords = ["meeting", "schedule", "sync", "call", "review", "calendar", "invite", "zoom", "demo", "session", "planning session"]
+    linear_keywords = ["linear", "linear issue", "backlog item", "project board"]
+    todoist_keywords = ["todoist", "to-do list", "todo item", "personal task"]
+    email_draft_keywords = ["email draft", "draft email", "draft an email", "draft a email", "reply to", "write to", "send an email", "draft the email", "follow-up email", "email the vendor", "email to"]
     jira_keywords = ["bug", "ticket", "issue", "crash", "deploy", "pipeline", "auth", "refactor", "api", "endpoint", "pull request", "pr"]
     notion_keywords = ["document", "doc", "spec", "roadmap", "notes", "wiki", "guide", "rfc", "summary", "plan"]
 
@@ -162,6 +165,18 @@ def deterministic_fallback_extractor(
                 suggested_tool = explicit_tool
                 actionability_type = "calendar_event" if explicit_tool == "calendar" else "task"
                 confidence = 0.9
+            elif any(k in content_lower for k in email_draft_keywords):
+                suggested_tool = "email_draft"
+                actionability_type = "task"
+                confidence = 0.88
+            elif any(k in content_lower for k in linear_keywords):
+                suggested_tool = "linear"
+                actionability_type = "task"
+                confidence = 0.87
+            elif any(k in content_lower for k in todoist_keywords):
+                suggested_tool = "todoist"
+                actionability_type = "task"
+                confidence = 0.86
             elif any(k in content_lower for k in calendar_keywords):
                 # Scheduling intent outranks document nouns: "schedule a
                 # roadmap planning session" is a calendar event even though
@@ -185,7 +200,24 @@ def deterministic_fallback_extractor(
             tool_payload: dict[str, Any] = {}
             now_utc = datetime.now(timezone.utc)
 
-            if suggested_tool == "jira":
+            if suggested_tool == "linear":
+                tool_payload = {
+                    "title": content[:120],
+                    "description": f"Extracted from {source_type}: {line}",
+                    "priority": priority,
+                }
+            elif suggested_tool == "todoist":
+                tool_payload = {
+                    "content": content[:150],
+                    "description": f"Captured from: {line}",
+                    "priority": priority,
+                }
+            elif suggested_tool == "email_draft":
+                tool_payload = {
+                    "subject": content[:100],
+                    "body": f"Draft prepared from: {line}",
+                }
+            elif suggested_tool == "jira":
                 tool_payload = {
                     "project_key": "ENG",
                     "issue_type": "Bug" if "bug" in content_lower or "crash" in content_lower else "Task",
