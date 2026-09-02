@@ -94,7 +94,6 @@ export default function ReviewPage({
     };
     source.onerror = () => source.close();
     return () => source.close();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [batchId]);
 
   const handleDecisionChange = (decision: ActionItemDecision) => {

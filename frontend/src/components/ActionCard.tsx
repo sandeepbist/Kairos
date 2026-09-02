@@ -20,6 +20,9 @@ const TOOL_NAMES: Record<TargetTool, string> = {
   linear: "Linear",
   todoist: "Todoist",
   email_draft: "Email draft",
+  github: "GitHub",
+  confluence_page: "Confluence",
+  google_tasks: "G Tasks",
 };
 
 const CONFIDENCE_TIER = (c: number): "high" | "mid" | "low" =>

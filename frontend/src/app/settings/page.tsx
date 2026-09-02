@@ -29,6 +29,9 @@ const TOOL_CARDS: Array<{
   { tool: "linear", name: "Linear", detail: "Files issues via the Linear GraphQL API.", protocol: "linear.app" },
   { tool: "todoist", name: "Todoist", detail: "Creates tasks via the Todoist REST v2 API.", protocol: "todoist.com" },
   { tool: "email_draft", name: "Email draft", detail: "Prepares a Gmail draft you review and send. Uses the Gmail credential.", protocol: "gmail drafts api" },
+  { tool: "github", name: "GitHub", detail: "Opens issues on a repository you name, via the REST API.", protocol: "api.github.com" },
+  { tool: "confluence_page", name: "Confluence", detail: "Creates pages through Atlassian's remote MCP server. Uses the Jira credential.", protocol: "mcp.atlassian.com" },
+  { tool: "google_tasks", name: "Google Tasks", detail: "Adds tasks to your task list via the Tasks API.", protocol: "tasks.googleapis.com" },
   { tool: "task_ledger", name: "Task Ledger", detail: "Built-in MCP server, backed by Postgres. Always available.", protocol: "mcp · internal" },
 ];
 
@@ -123,6 +126,9 @@ export default function SettingsPage() {
   const isGmailConnected = Boolean(status?.connectors?.email_draft?.oauth_connected);
   const isLinearConnected = Boolean(status?.connectors?.linear?.oauth_connected);
   const isTodoistConnected = Boolean(status?.connectors?.todoist?.oauth_connected);
+  const isGithubConnected = Boolean(status?.connectors?.github?.oauth_connected);
+  const isConfluenceConnected = Boolean(status?.connectors?.confluence_page?.oauth_connected);
+  const isGoogleTasksConnected = Boolean(status?.connectors?.google_tasks?.oauth_connected);
 
   const credentialCards: CredentialConfig[] = [
     {
@@ -192,6 +198,29 @@ export default function SettingsPage() {
       linkUrl: "https://todoist.com/psettings/integrations",
       placeholder: "Todoist API token",
       connectedKey: () => isTodoistConnected,
+    },
+    {
+      provider: "github",
+      label: "GitHub",
+      hint: "Fine-grained PAT with Issues: write on your target repo. Default repo set via GITHUB_TARGET_REPO, or per action.",
+      linkLabel: "github.com/settings/personal-access-tokens",
+      linkUrl: "https://github.com/settings/personal-access-tokens/new",
+      placeholder: "GitHub PAT (github_pat_…)",
+      connectedKey: () => isGithubConnected,
+    },
+    {
+      provider: "confluence",
+      label: "Confluence",
+      hint: "Pages go through Atlassian's remote MCP server. Uses the Jira credential — connect Jira above and this activates.",
+      placeholder: "Atlassian token (optional override)",
+      connectedKey: () => isConfluenceConnected,
+    },
+    {
+      provider: "google_tasks",
+      label: "Google Tasks",
+      hint: "OAuth token with the tasks scope. A Google Calendar token with a bundled grant also works.",
+      placeholder: "OAuth access token (tasks scope)",
+      connectedKey: () => isGoogleTasksConnected,
     },
   ];
 

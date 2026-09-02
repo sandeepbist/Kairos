@@ -332,6 +332,114 @@ export function PayloadModal({
             </>
           )}
 
+          {/* GITHUB */}
+          {targetTool === "github" && (
+            <>
+              <div>
+                <label className="field-label">Repository (owner/name)</label>
+                <input
+                  className="input mono"
+                  value={str("repo")}
+                  onChange={(e) => handleChange("repo", e.target.value)}
+                  placeholder="acme/planning"
+                />
+              </div>
+              <div>
+                <label className="field-label">Issue title</label>
+                <input
+                  className="input"
+                  value={str("title")}
+                  onChange={(e) => handleChange("title", e.target.value)}
+                />
+              </div>
+              <div>
+                <label className="field-label">Description</label>
+                <textarea
+                  className="input"
+                  style={{ resize: "vertical" }}
+                  rows={3}
+                  value={str("description")}
+                  onChange={(e) => handleChange("description", e.target.value)}
+                />
+              </div>
+              <div>
+                <label className="field-label">Labels (comma separated)</label>
+                <input
+                  className="input mono"
+                  value={str("labels")}
+                  onChange={(e) => handleChange("labels", e.target.value)}
+                  placeholder="kairos, bug"
+                />
+              </div>
+            </>
+          )}
+
+          {/* CONFLUENCE */}
+          {targetTool === "confluence_page" && (
+            <>
+              <div>
+                <label className="field-label">Space key</label>
+                <input
+                  className="input mono"
+                  value={str("space_key")}
+                  onChange={(e) => handleChange("space_key", e.target.value)}
+                  placeholder="TEAM"
+                />
+              </div>
+              <div>
+                <label className="field-label">Page title</label>
+                <input
+                  className="input"
+                  value={str("title")}
+                  onChange={(e) => handleChange("title", e.target.value)}
+                />
+              </div>
+              <div>
+                <label className="field-label">Content</label>
+                <textarea
+                  className="input"
+                  style={{ resize: "vertical" }}
+                  rows={4}
+                  value={str("content")}
+                  onChange={(e) => handleChange("content", e.target.value)}
+                />
+              </div>
+            </>
+          )}
+
+          {/* GOOGLE TASKS */}
+          {targetTool === "google_tasks" && (
+            <>
+              <div>
+                <label className="field-label">Task title</label>
+                <input
+                  className="input"
+                  value={str("title")}
+                  onChange={(e) => handleChange("title", e.target.value)}
+                />
+              </div>
+              <div>
+                <label className="field-label">Notes</label>
+                <textarea
+                  className="input"
+                  style={{ resize: "vertical" }}
+                  rows={3}
+                  value={str("notes")}
+                  onChange={(e) => handleChange("notes", e.target.value)}
+                />
+              </div>
+              <div>
+                <label className="field-label">Due date</label>
+                <input
+                  className="input mono"
+                  type="date"
+                  value={str("due_date")}
+                  onChange={(e) => handleChange("due_date", e.target.value)}
+                />
+              </div>
+            </>
+          )}
+
           {/* TASK LEDGER */}
           {targetTool === "task_ledger" && (
             <>

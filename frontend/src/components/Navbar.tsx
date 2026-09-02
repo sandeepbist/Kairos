@@ -14,9 +14,12 @@ const TOOL_LABELS: Record<TargetTool, string> = {
   linear: "Linear",
   todoist: "Todoist",
   email_draft: "Email",
+  github: "GitHub",
+  confluence_page: "Confluence",
+  google_tasks: "G Tasks",
 };
 
-const CONNECTOR_TOOLS: TargetTool[] = ["notion", "jira", "calendar", "linear", "todoist", "email_draft", "task_ledger"];
+const CONNECTOR_TOOLS: TargetTool[] = ["notion", "jira", "calendar", "linear", "todoist", "email_draft", "github", "confluence_page", "google_tasks", "task_ledger"];
 
 export function Navbar() {
   const pathname = usePathname();

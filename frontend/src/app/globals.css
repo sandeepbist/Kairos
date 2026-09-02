@@ -32,6 +32,9 @@
   --tool-linear: #a5a5f3;
   --tool-todoist: #e06c75;
   --tool-email: #d8a67e;
+  --tool-github: #9aa4b2;
+  --tool-confluence: #6fb3d9;
+  --tool-gtasks: #8fbf9f;
 
   /* Status */
   --ok: #4ade80;
@@ -301,6 +304,9 @@ body {
 .tag-linear { color: var(--tool-linear); border-color: rgba(165, 165, 243, 0.28); }
 .tag-todoist { color: var(--tool-todoist); border-color: rgba(224, 108, 117, 0.28); }
 .tag-email_draft { color: var(--tool-email); border-color: rgba(216, 166, 126, 0.28); }
+.tag-github { color: var(--tool-github); border-color: rgba(154, 164, 178, 0.28); }
+.tag-confluence_page { color: var(--tool-confluence); border-color: rgba(111, 179, 217, 0.28); }
+.tag-google_tasks { color: var(--tool-gtasks); border-color: rgba(143, 191, 159, 0.28); }
 
 /* ============ Status ============ */
 
