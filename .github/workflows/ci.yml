@@ -51,6 +51,10 @@ jobs:
         working-directory: backend
         run: python -m pytest tests/ -v --tb=short
 
+      - name: Extraction eval gate (deterministic baseline)
+        working-directory: backend
+        run: PYTHONPATH=. python -m evals.run --threshold 0.9
+
   frontend:
     runs-on: ubuntu-latest
     steps:

@@ -44,11 +44,14 @@ def deterministic_fallback_extractor(
     extracted: list[dict[str, Any]] = []
 
     # Patterns for intent detection
-    calendar_keywords = ["meeting", "schedule", "sync", "call", "review", "calendar", "invite", "zoom", "demo"]
+    calendar_keywords = ["meeting", "schedule", "sync", "call", "review", "calendar", "invite", "zoom", "demo", "session", "planning session"]
     jira_keywords = ["bug", "ticket", "issue", "crash", "deploy", "pipeline", "auth", "refactor", "api", "endpoint", "pull request", "pr"]
     notion_keywords = ["document", "doc", "spec", "roadmap", "notes", "wiki", "guide", "rfc", "summary", "plan"]
 
-    speaker_pattern = re.compile(r"^([A-Z][a-zA-Z\s]+):\s*(.*)$")
+    # Handles capitalized names AND lowercase/slack-style handles (tom_j,
+    # sara_li). The name group stops at the colon; :wave: is not a speaker.
+    speaker_pattern = re.compile(r"^([A-Za-z][A-Za-z0-9_ .'-]{0,40})?:\s*(.*)$")
+    speaker_noop_pattern = re.compile(r"^\d+$")  # line numbers / timestamps
     action_keywords = [
         "will", "can you", "please", "i'll", "let's", "need to", "should", "assign", "action item", "todo", "must", "follow up"
     ]
@@ -63,9 +66,31 @@ def deterministic_fallback_extractor(
 
         # 1. Speaker Attribution
         match = speaker_pattern.match(line)
-        if match:
+        if match and not speaker_noop_pattern.match(match.group(1).strip()):
             speaker = match.group(1).strip()
             content = match.group(2).strip()
+        # Numbered email/bullet form: "1. Alex: Please prepare..." — the
+        # inner label is the real speaker.
+        numbered = re.match(r"^\d+[.)]\s*([A-Za-z][A-Za-z0-9_ .'-]{0,40}):\s*(.*)$", line)
+        numbered_speaker = None
+        if numbered:
+            speaker = numbered.group(1).strip()
+            numbered_speaker = speaker
+            content = numbered.group(2).strip()
+        # Bullet/checkbox notes: "- Karan to schedule the investor update…"
+        # becomes owner + task so checklist exports parse correctly.
+        bullet_match = re.match(r"^[-*]\s+([A-Za-z][a-z]+)\s+to\s+(.+)$", line)
+        bullet_owner = None
+        if bullet_match:
+            speaker = None
+            bullet_owner = bullet_match.group(1)
+            content = f"{bullet_owner} will {bullet_match.group(2)}"
+        # Strip leading Slack emoji (:wave:) and decorative symbols so
+        # "quick one — Tom, can you…" starts clean for assignee matching.
+        content = re.sub(r"^(?:\:[a-z0-9_+]+\:\s*)+", "", content).lstrip("—–- ").strip()
+        if not content:
+            # nothing actionable left after stripping
+            continue
 
         content_lower = content.lower()
 
@@ -82,31 +107,72 @@ def deterministic_fallback_extractor(
             direct_address_match = re.match(r"^([A-Z][a-z]+)[,\s:]+(?:please|can you|could you|will you|take care of|look into)\b", content, re.IGNORECASE)
             if direct_address_match:
                 suggested_assignee = direct_address_match.group(1).strip()
+            # Bullet-form owner ("- Karan to schedule…") is the assignee.
+            if bullet_owner:
+                suggested_assignee = bullet_owner
+            # Numbered-line speaker ("1. Alex: Please prepare…") owns the
+            # action they are told to perform.
+            if numbered_speaker and not suggested_assignee:
+                suggested_assignee = numbered_speaker
+            # Pattern A2: "...also/and Cara, can you..." — a second owner
+            # named mid-line gets their own item via the tail splitter.
+            later_address = re.search(
+                r"\b(?:also|and)\s+([A-Z][a-z]+)[,\s]+(?:can you|could you|please|will you)",
+                content,
+            )
+            if later_address and not suggested_assignee:
+                suggested_assignee = later_address.group(1).strip()
             # Pattern B: First person commitment: "I will..." or "I'll..."
             elif speaker and ("i will" in content_lower or "i'll" in content_lower or "let me" in content_lower):
                 suggested_assignee = speaker
-            # Pattern C: "please Alex" or "can you Alex"
+            # Pattern C: mid-line direct address — "…Tom, can you update…"
+            # or "Uma, please file…" anywhere in the line, not just at start.
             else:
-                modal_match = re.search(r"(?:please|can you|could you)\s+([A-Z][a-z]+)\b", content)
-                if modal_match:
-                    name = modal_match.group(1).strip()
-                    if name.lower() not in {"file", "update", "fix", "check", "send", "review", "schedule", "create", "make"}:
+                midline = re.search(
+                    r"\b([A-Z][a-z]+)\s*[,—-]\s*(?:please|can you|could you|will you)\b",
+                    content,
+                )
+                if midline:
+                    name = midline.group(1).strip()
+                    if name.lower() not in {"file", "update", "fix", "check", "send", "review", "schedule", "create", "make", "quick", "anyway"}:
                         suggested_assignee = name
+                else:
+                    modal_match = re.search(r"(?:please|can you|could you)\s+([A-Z][a-z]+)\b", content)
+                    if modal_match:
+                        name = modal_match.group(1).strip()
+                        if name.lower() not in {"file", "update", "fix", "check", "send", "review", "schedule", "create", "make"}:
+                            suggested_assignee = name
 
             # Determine Tool & Actionability Type
+            # Explicit destination naming wins over topic keywords:
+            # "put it in Jira", "add to my calendar", "in the wiki/Notion".
             suggested_tool = "task_ledger"
+            explicit_tool = None
+            if re.search(r"\bin\s+(?:the\s+)?jira\b|\bjira\s+(?:ticket|issue|board)\b", content_lower):
+                explicit_tool = "jira"
+            elif re.search(r"\b(?:my|the)\s+calendar\b|\bin\s+calendar\b", content_lower):
+                explicit_tool = "calendar"
+            elif re.search(r"\b(?:in|to|under)\s+(?:the\s+)?(?:notion|wiki)\b", content_lower):
+                explicit_tool = "notion"
             actionability_type = "task"
             confidence = 0.82
             priority = "medium"
 
-            if any(k in content_lower for k in notion_keywords):
-                suggested_tool = "notion"
-                actionability_type = "task"
-                confidence = 0.85
+            if explicit_tool:
+                suggested_tool = explicit_tool
+                actionability_type = "calendar_event" if explicit_tool == "calendar" else "task"
+                confidence = 0.9
             elif any(k in content_lower for k in calendar_keywords):
+                # Scheduling intent outranks document nouns: "schedule a
+                # roadmap planning session" is a calendar event even though
+                # "roadmap" is a notion topic.
                 suggested_tool = "calendar"
                 actionability_type = "calendar_event"
                 confidence = 0.90
+            elif any(k in content_lower for k in notion_keywords):
+                suggested_tool = "notion"
+                actionability_type = "task"
+                confidence = 0.85
             elif any(k in content_lower for k in jira_keywords):
                 suggested_tool = "jira"
                 actionability_type = "task"
@@ -162,6 +228,75 @@ def deterministic_fallback_extractor(
                 "source_snippet": line,
                 "tool_payload": tool_payload,
             })
+
+            # "Also/and <Name>, <imperative>" tail in the same line splits
+            # into a second item so each owner gets their own task.
+            tail = re.search(
+                r"\b(?:also|and)\s+([A-Z][a-z]+)[,\s]+(?:can you|could you|please|will you|to)\s+(.+)$",
+                content, re.IGNORECASE,
+            )
+            # Name-less conjunction: "X in Jira, and add the meeting to my
+            # calendar." — the tail is a second action with no new owner.
+            tail_ownerless = re.search(
+                r"\b(?:and|also)\s+(?:add|put|create|file|schedule|send|update)\s+(.+)$",
+                content, re.IGNORECASE,
+            ) if not tail else None
+            if tail and tail.group(1) != suggested_assignee:
+                tail_assignee = tail.group(1)
+                tail_content = tail.group(2).strip()
+                tail_tool = "task_ledger"
+                tail_lower = tail_content.lower()
+                if any(k in tail_lower for k in notion_keywords):
+                    tail_tool = "notion"
+                elif any(k in tail_lower for k in calendar_keywords):
+                    tail_tool = "calendar"
+                elif any(k in tail_lower for k in jira_keywords):
+                    tail_tool = "jira"
+                extracted.append({
+                    "id": str(uuid.uuid4()),
+                    "description": tail_content,
+                    "suggested_tool": tail_tool,
+                    "suggested_due_date": (date.today() + timedelta(days=5)).isoformat(),
+                    "suggested_assignee": tail_assignee,
+                    "speaker": speaker,
+                    "actionability_type": "task",
+                    "priority": "medium",
+                    "confidence": 0.78,
+                    "source_snippet": line,
+                    "tool_payload": {
+                        "title": tail_content[:80],
+                        "notes": f"Captured from: {line}",
+                        "priority": "medium",
+                    },
+                })
+            elif tail_ownerless:
+                tail_content = tail_ownerless.group(1).strip().rstrip(".")
+                tail_lower = tail_content.lower()
+                tail_tool = "task_ledger"
+                if re.search(r"\b(?:my|the)\s+calendar\b|\bin\s+calendar\b", tail_lower):
+                    tail_tool = "calendar"
+                elif re.search(r"\bjira\b", tail_lower):
+                    tail_tool = "jira"
+                elif re.search(r"\b(?:notion|wiki)\b", tail_lower):
+                    tail_tool = "notion"
+                if tail_tool != suggested_tool or tail_content not in content[: -len(tail_content)]:
+                    extracted.append({
+                        "id": str(uuid.uuid4()),
+                        "description": tail_content,
+                        "suggested_tool": tail_tool,
+                        "suggested_due_date": (date.today() + timedelta(days=5)).isoformat(),
+                        "suggested_assignee": suggested_assignee,
+                        "speaker": speaker,
+                        "actionability_type": "calendar_event" if tail_tool == "calendar" else "task",
+                        "priority": "medium",
+                        "confidence": 0.78,
+                        "source_snippet": line,
+                        "tool_payload": {
+                            "title": tail_content[:80],
+                            "notes": f"Captured from: {line}",
+                            "priority": "medium",
+                        },
+                    })
 
     # Fallback if text has content but no specific keyword matched
     if not extracted and lines:
