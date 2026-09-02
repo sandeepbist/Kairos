@@ -7,6 +7,9 @@ from .calendar_connector import CalendarConnector
 from .linear_connector import LinearConnector
 from .todoist_connector import TodoistConnector
 from .email_draft_connector import EmailDraftConnector
+from .github_connector import GitHubConnector
+from .confluence_connector import ConfluenceConnector
+from .google_tasks_connector import GoogleTasksConnector
 
 __all__ = [
     "BaseConnector",
@@ -18,4 +21,7 @@ __all__ = [
     "LinearConnector",
     "TodoistConnector",
     "EmailDraftConnector",
+    "GitHubConnector",
+    "ConfluenceConnector",
+    "GoogleTasksConnector",
 ]

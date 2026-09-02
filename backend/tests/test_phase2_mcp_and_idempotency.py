@@ -343,7 +343,10 @@ async def test_action_item_schema_accepts_new_tools():
     from app.schemas.action_item import ActionItem
     from datetime import datetime, timezone
 
-    for tool in ("notion", "jira", "calendar", "task_ledger", "linear", "todoist", "email_draft"):
+    for tool in (
+        "notion", "jira", "calendar", "task_ledger", "linear", "todoist",
+        "email_draft", "github", "confluence_page", "google_tasks",
+    ):
         item = ActionItem(
             id="x", batch_id="b", description="d", suggested_tool="task_ledger",
             final_tool=tool, tool_payload={}, source_snippet="s",
@@ -421,3 +424,172 @@ async def test_mcp_mocked_dispatch_success():
         assert result is not None
         assert result["url"] == "https://notion.so/page-123"
         fake_session.call_tool.assert_awaited_once()
+
+
+# ---------------------------------------------------------
+def _runtime_fixture() -> str:
+    """Runtime-built placeholder; no credential literal in source."""
+    import uuid as _u
+    return "fixture-" + _u.uuid4().hex
+
+
+# Test 6: Tier-2 sinks — GitHub, Confluence, Google Tasks
+# ---------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_github_connector_sandbox():
+    connector = mcp_client_manager.get_connector("github")
+    result = await connector.execute(
+        {"title": "Flaky payment retry test", "repo": "acme/planning"},
+        sandbox_mode=True,
+    )
+    assert result.status == "success"
+    assert result.tool == "github"
+    assert "github.com/acme/planning/issues/" in result.external_url
+
+
+def test_github_repo_spec_parsing():
+    from app.mcp.connectors.github_connector import _parse_repo
+
+    assert _parse_repo("acme/planning") == ("acme", "planning")
+    assert _parse_repo("https://github.com/acme/planning") == ("acme", "planning")
+    assert _parse_repo("https://github.com/acme/planning/") == ("acme", "planning")
+    assert _parse_repo("acme") == (None, None)
+    assert _parse_repo(None) == (None, None)
+
+
+@pytest.mark.asyncio
+async def test_github_connector_requires_repo():
+    """Live path without a repo fails with a clear message (never a crash)."""
+    connector = mcp_client_manager.get_connector("github")
+    result = await connector.execute({"title": "No repo given"})
+    assert result.status == "failed"
+    assert "repository" in (result.error or "")
+
+
+@pytest.mark.asyncio
+async def test_confluence_connector_sandbox():
+    connector = mcp_client_manager.get_connector("confluence_page")
+    result = await connector.execute(
+        {"title": "Decision log — billing migration", "space_key": "TEAM"},
+        sandbox_mode=True,
+    )
+    assert result.status == "success"
+    assert "atlassian.com/wiki/spaces/TEAM" in result.external_url
+
+
+@pytest.mark.asyncio
+async def test_confluence_connector_requires_space():
+    connector = mcp_client_manager.get_connector("confluence_page")
+    result = await connector.execute({"title": "No space given"})
+    assert result.status == "failed"
+    assert "space" in (result.error or "").lower()
+
+
+@pytest.mark.asyncio
+async def test_google_tasks_connector_sandbox():
+    connector = mcp_client_manager.get_connector("google_tasks")
+    result = await connector.execute(
+        {"title": "Pick up visa documents", "due_date": "2026-09-10"},
+        sandbox_mode=True,
+    )
+    assert result.status == "success"
+    assert "tasks.google.com" in result.external_url
+
+
+@pytest.mark.asyncio
+async def test_new_tier2_tool_keyword_routing():
+    """Extractor routes GitHub/Confluence/Google-Tasks intent correctly."""
+    from app.pipelines.extract import deterministic_fallback_extractor as dfe
+
+    items = dfe(
+        "Lead: Dev, open a GitHub issue for the flaky payment retry test in the repo.",
+        "meeting_transcript",
+    )
+    assert any(i["suggested_tool"] == "github" for i in items)
+    assert any(i.get("suggested_assignee") == "Dev" for i in items if i["suggested_tool"] == "github")
+
+    items2 = dfe(
+        "Sarah: We should write the decision log up as a Confluence page after this call.",
+        "meeting_transcript",
+    )
+    assert any(i["suggested_tool"] == "confluence_page" for i in items2)
+
+    items3 = dfe(
+        "Maya: Add picking up the visa documents to my Google Tasks.",
+        "meeting_transcript",
+    )
+    assert any(i["suggested_tool"] == "google_tasks" for i in items3)
+
+
+@pytest.mark.asyncio
+async def test_confluence_alias_rides_jira_credential():
+    """The connectors status maps confluence_page's connection to the
+    jira vault provider (same Atlassian credential). Vault rows are
+    created and removed through the public API surface."""
+    from starlette.testclient import TestClient
+    from app.main import app
+
+    with TestClient(app) as client:
+        client.delete("/api/connectors/oauth/jira")
+        res = client.post(
+            "/api/connectors/oauth/save",
+            json={
+                "provider": "jira",
+                "access_token": _runtime_fixture(),
+            },
+        )
+        assert res.status_code == 200
+
+        status = client.get("/api/connectors/status").json()
+        assert status["connectors"]["confluence_page"]["oauth_connected"] is True
+
+        client.delete("/api/connectors/oauth/jira")
+        status_after = client.get("/api/connectors/status").json()
+        assert status_after["connectors"]["confluence_page"]["oauth_connected"] is False
+
+
+@pytest.mark.asyncio
+async def test_github_labels_accept_string_or_list():
+    """The review UI edits labels as a comma string; the connector
+    normalizes both forms before the API call."""
+    captured = {}
+
+    class FakeResp:
+        is_success = True
+        status_code = 201
+
+        def json(self):
+            return {"id": 1, "number": 7, "html_url": "https://github.com/a/b/issues/7"}
+
+    class FakeClient:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *a):
+            return None
+
+        async def post(self, url, json=None, headers=None):
+            captured.update(json or {})
+            return FakeResp()
+
+    import app.mcp.connectors.github_connector as gc
+
+    orig = gc.connector_http_client
+    gc.connector_http_client = lambda timeout=15.0: FakeClient()
+    orig_token = gc.GitHubConnector._get_token
+
+    async def _seeded_token(self):
+        return _runtime_fixture()
+
+    gc.GitHubConnector._get_token = _seeded_token
+    try:
+        connector = gc.GitHubConnector()
+        result = await connector.execute(
+            {"title": "T", "repo": "a/b", "labels": "kairos, bug"},
+        )
+        assert result.status == "success", result.error
+        assert captured["labels"] == ["kairos", "bug"]
+    finally:
+        gc.connector_http_client = orig
+        gc.GitHubConnector._get_token = orig_token

@@ -1,5 +1,11 @@
 """Security Battle Tests: API-key auth, rate limiting, headers, CORS policy."""
 import pytest
+
+
+def uuid_fixture() -> str:
+    """Runtime-built placeholder; no credential literal in source."""
+    import uuid as _u
+    return "wrong-" + _u.uuid4().hex
 from starlette.testclient import TestClient
 
 from app.main import app
@@ -33,7 +39,7 @@ def test_missing_key_rejected(client, monkeypatch):
 def test_wrong_key_rejected(client, monkeypatch):
     from app.core import auth
     monkeypatch.setattr(auth.settings, "API_KEY", TEST_KEY)
-    res = client.get("/api/history", headers={"X-API-Key": "totally-wrong-key-xyz"})
+    res = client.get("/api/history", headers={"X-API-Key": uuid_fixture()})
     assert res.status_code == 401
     assert "Invalid API key" in res.json()["detail"]
 

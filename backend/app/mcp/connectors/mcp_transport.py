@@ -25,6 +25,8 @@ logger = logging.getLogger(__name__)
 MCP_REMOTE_ENDPOINTS: dict[str, str] = {
     "notion": "https://mcp.notion.com/mcp",
     "jira": "https://mcp.atlassian.com/v2/mcp",
+    "confluence_page": "https://mcp.atlassian.com/v2/mcp",
+    "github": "https://api.githubcopilot.com/mcp/",
 }
 
 # Tool names on the remote servers that map to Kairos executions.
@@ -32,7 +34,9 @@ MCP_REMOTE_ENDPOINTS: dict[str, str] = {
 # so alternates are listed per action.
 MCP_TOOL_NAMES: dict[str, list[str]] = {
     "notion": ["notion_create_page", "create_page"],
-    "jira": ["jira_create_issue", "create_issue"],
+    "jira": ["createJiraIssue", "jira_create_issue", "create_issue"],
+    "confluence_page": ["createConfluenceContent", "confluence_create_page"],
+    "github": ["issue_write", "create_issue"],
 }
 
 
@@ -98,5 +102,21 @@ def _mcp_arguments(tool: str, payload: dict[str, Any]) -> dict[str, Any]:
             "description": payload.get("description") or "",
             "issue_type": payload.get("issue_type", "Task"),
             "project_key": payload.get("project_key", "PROJ"),
+        }
+    if tool == "confluence_page":
+        return {
+            "title": (payload.get("title") or "Untitled page")[:255],
+            "spaceKey": payload.get("spaceKey") or payload.get("space_key") or "",
+            "content": payload.get("content") or payload.get("description") or "",
+            "type": "page",
+        }
+    if tool == "github":
+        return {
+            "owner": payload.get("owner") or "",
+            "repo": payload.get("repo") or "",
+            "method": "create",
+            "title": (payload.get("title") or "Untitled issue")[:256],
+            "body": payload.get("body") or "",
+            "labels": payload.get("labels") or ["kairos"],
         }
     return dict(payload)

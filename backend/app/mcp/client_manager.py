@@ -17,6 +17,9 @@ from .connectors import (
     LinearConnector,
     TodoistConnector,
     EmailDraftConnector,
+    GitHubConnector,
+    ConfluenceConnector,
+    GoogleTasksConnector,
 )
 
 
@@ -32,6 +35,9 @@ class McpClientManager:
             "linear": LinearConnector(),
             "todoist": TodoistConnector(),
             "email_draft": EmailDraftConnector(),
+            "github": GitHubConnector(),
+            "confluence_page": ConfluenceConnector(),
+            "google_tasks": GoogleTasksConnector(),
         }
 
     def get_connector(self, tool_name: str) -> BaseConnector:

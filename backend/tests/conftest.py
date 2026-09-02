@@ -12,6 +12,21 @@ from app.db.session import engine
 _BACKEND_DIR = os.path.join(os.path.dirname(__file__), "..")
 
 
+@pytest.fixture(autouse=True)
+def reset_rate_limit_windows():
+    """Clears the app's in-memory rate-limit windows around every test.
+
+    The middleware instances live on the shared FastAPI app object, so
+    burst tests (which legitimately exhaust the limits) would otherwise
+    throttle unrelated suites that happen to share the process.
+    """
+    from app.core.ratelimit import RateLimitMiddleware
+
+    RateLimitMiddleware.reset_for_tests()
+    yield
+    RateLimitMiddleware.reset_for_tests()
+
+
 @pytest.fixture(scope="session", autouse=True)
 def setup_and_teardown_test_db():
     """Applies migrations once per session, purges test data on finish."""

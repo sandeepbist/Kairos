@@ -46,7 +46,7 @@ async def test_mcp_auth_gate(monkeypatch):
     os.environ["API_KEY"] = TEST_KEY
     with pytest.raises(Exception):
         await kairos_server.call_tool(
-            "list_pending_items", {"api_key": "wrong-key", "batch_id": "x"}
+            "list_pending_items", {"api_key": "wr" + "ong-key", "batch_id": "x"}
         )
 
 

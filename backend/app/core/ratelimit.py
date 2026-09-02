@@ -66,10 +66,22 @@ def _client_ip(request: Request) -> str:
 class RateLimitMiddleware(BaseHTTPMiddleware):
     """Applies per-path-class limits: mutations are stricter than reads."""
 
+    # Every instantiated middleware registers its limiters here so test
+    # tooling can clear the in-memory windows between suites sharing one
+    # app process (burst tests legitimately exhaust them).
+    _active_limiters: list["InMemoryRateLimiter"] = []
+
     def __init__(self, app: Any) -> None:
         super().__init__(app)
         self._read_limiter = InMemoryRateLimiter(max_requests=60, window_seconds=60)
         self._write_limiter = InMemoryRateLimiter(max_requests=10, window_seconds=60)
+        type(self)._active_limiters.extend([self._read_limiter, self._write_limiter])
+
+    @classmethod
+    def reset_for_tests(cls) -> None:
+        """Drops all recorded hit windows (test isolation only)."""
+        for limiter in cls._active_limiters:
+            limiter._hits.clear()
 
     async def dispatch(self, request: Request, call_next: Callable) -> Response:
         # Health probes must never be throttled.

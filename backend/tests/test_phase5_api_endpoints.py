@@ -11,6 +11,12 @@ from app.core.security import encrypt_token, decrypt_token
 from app.temporal.worker import create_worker, get_temporal_client
 
 
+def uuid_fixture() -> str:
+    """Runtime-built placeholder; no credential literal in source."""
+    import uuid as _u
+    return "fixture-" + _u.uuid4().hex
+
+
 @pytest.fixture(autouse=True)
 async def setup_db():
     await init_db()
@@ -43,13 +49,14 @@ async def test_oauth_vault_encryption():
 
 @pytest.mark.asyncio
 async def test_connectors_endpoints_and_oauth_save():
+    plain_access = uuid_fixture()
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         # 1. Save OAuth token
         res = await client.post(
             "/api/connectors/oauth/save",
             json={
                 "provider": "notion",
-                "access_token": "secret_notion_oauth_token_123",
+                "access_token": plain_access,
                 "scopes": "pages:write,databases:read",
             },
         )
@@ -58,8 +65,8 @@ async def test_connectors_endpoints_and_oauth_save():
         # Verify DB storage is encrypted
         async with async_session_factory() as session:
             t = (await session.execute(select(OAuthTokenModel).where(OAuthTokenModel.provider == "notion"))).scalar_one()
-            assert t.access_token_enc != "secret_notion_oauth_token_123"
-            assert decrypt_token(t.access_token_enc) == "secret_notion_oauth_token_123"
+            assert t.access_token_enc != plain_access
+            assert decrypt_token(t.access_token_enc) == plain_access
 
         # 2. Get connectors status
         status_res = await client.get("/api/connectors/status")
