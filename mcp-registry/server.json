@@ -1,0 +1,51 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "com.kairos/task-ledger",
+  "title": "Kairos Task Ledger MCP Server",
+  "description": "A Postgres-backed task ledger MCP server: create, list, complete, and delete tasks. Runs self-hosted as part of the Kairos ambient action engine or standalone as a durable fallback destination for action items that map to no external tool.",
+  "version": "1.0.0",
+  "websiteUrl": "https://github.com/sandeepbist/Kairos",
+  "repository": {
+    "url": "https://github.com/sandeepbist/Kairos",
+    "source": "github"
+  },
+  "packages": [
+    {
+      "registry_type": "pypi",
+      "registry_version": "1.0",
+      "identifier": "kairos-task-ledger",
+      "version": "1.0.0",
+      "transport": {
+        "type": "stdio"
+      },
+      "run_time": "python",
+      "environment_variables": [
+        {
+          "name": "POSTGRES_HOST",
+          "description": "PostgreSQL host for the ledger database",
+          "required": true
+        },
+        {
+          "name": "POSTGRES_PORT",
+          "description": "PostgreSQL port (default 5435 in Kairos deployments)",
+          "required": false
+        },
+        {
+          "name": "POSTGRES_DB",
+          "description": "Database name (default kairos_db)",
+          "required": false
+        },
+        {
+          "name": "POSTGRES_USER",
+          "description": "Database user",
+          "required": true
+        },
+        {
+          "name": "POSTGRES_PASSWORD",
+          "description": "Database password",
+          "required": true
+        }
+      ]
+    }
+  ]
+}

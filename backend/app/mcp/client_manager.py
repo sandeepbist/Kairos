@@ -82,7 +82,19 @@ class McpClientManager:
                     },
                 )
 
-        # 2. Dispatch to target connector
+        # 2. Dispatch to target connector, traced with OTel GenAI
+        #    conventional attributes so any backend parses tool calls.
+        from app.core.telemetry import telemetry
+
+        telemetry.log_trace(
+            batch_id=batch_id,
+            name=f"tool_call/{tool}",
+            metadata=telemetry.genai_attributes(
+                operation="execute_action",
+                tool_name=tool,
+                extra={"batch_id": batch_id, "item_id": item_id},
+            ),
+        )
         connector = self.get_connector(tool)
         result = await connector.execute(payload, sandbox_mode=effective_sandbox)
 

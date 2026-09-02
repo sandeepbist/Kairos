@@ -48,3 +48,21 @@ def test_redact_error_exception():
 def test_empty_and_none_safe():
     assert redact_secrets("") == ""
     assert redact_secrets("no secrets here") == "no secrets here"
+
+
+def test_genai_semantic_attributes():
+    """Telemetry emits OTel GenAI-conventional attribute names."""
+    from app.core.telemetry import telemetry
+
+    attrs = telemetry.genai_attributes(
+        operation="execute_action",
+        tool_name="create_task",
+        latency_ms=95,
+        token_count=320,
+        extra={"batch_id": "b1"},
+    )
+    assert attrs["gen_ai.operation.name"] == "execute_action"
+    assert attrs["gen_ai.tool.name"] == "create_task"
+    assert attrs["gen_ai.usage.token_count"] == 320
+    assert attrs["gen_ai.response.time_to_first_chunk"] == 95
+    assert attrs["batch_id"] == "b1"
