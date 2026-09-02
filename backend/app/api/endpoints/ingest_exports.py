@@ -23,7 +23,8 @@ class ExportIngestRequest(BatchIngestRequest):
     """A notetaker export: markdown or plain text with optional YAML-ish
     front matter (title, date, attendees)."""
 
-    export_format: str = "markdown"  # markdown | otter | fireflies | plain
+    # markdown | otter | fireflies | slack_export | plain
+    export_format: str = "markdown"
     title: str | None = None
 
 
@@ -44,6 +45,54 @@ def strip_front_matter(text: str) -> tuple[str, dict[str, str]]:
             k, _, v = line.partition(":")
             meta[k.strip().lower()] = v.strip()
     return text[m.end():], meta
+
+
+def normalize_slack_export(raw: str) -> str:
+    """Normalizes Slack export JSON (messages array or channel history)
+    and copied thread text into 'Name: content' speaker turns.
+
+    Slack exports carry timestamps as unix epochs and messages as
+    {user/user_profile/name, text}; copied threads look like
+    'Name  12:34 PM  message'. Both become plain speaker lines.
+    """
+    import json as _json
+
+    # JSON form: a bare list, or a {"messages": [...]} / channel-history dict
+    stripped = raw.strip()
+    if stripped.startswith("[") or stripped.startswith("{"):
+        try:
+            data = _json.loads(stripped)
+            messages = data if isinstance(data, list) else data.get("messages", [])
+            lines = []
+            for msg in messages:
+                if not isinstance(msg, dict):
+                    continue
+                who = (
+                    msg.get("user_profile", {}).get("display_name")
+                    or msg.get("user")
+                    or msg.get("name")
+                    or "Someone"
+                )
+                text = (msg.get("text") or "").strip()
+                if text:
+                    lines.append(f"{who}: {text}")
+            if lines:
+                return "\n".join(lines)
+        except ValueError:
+            pass  # not JSON after all — fall through to text handling
+
+    # Copied-thread text: 'Name  12:34 PM  content' (Slack copy layout)
+    lines = []
+    for line in raw.splitlines():
+        s = line.strip()
+        if not s:
+            continue
+        m = re.match(r"^([A-Za-z][\w .'-]{0,40}?)\s+\d{1,2}:\d{2}\s*(?:AM|PM)?\s+(.+)$", s)
+        if m:
+            lines.append(f"{m.group(1)}: {m.group(2)}")
+        else:
+            lines.append(s)
+    return "\n".join(lines)
 
 
 def normalize_export(raw: str, export_format: str) -> str:
@@ -98,7 +147,10 @@ async def ingest_export(
     the same extraction pipeline a manual paste uses.
     """
     body, meta = strip_front_matter(request.raw_text)
-    normalized = normalize_export(body, request.export_format)
+    if request.export_format == "slack_export":
+        normalized = normalize_slack_export(body)
+    else:
+        normalized = normalize_export(body, request.export_format)
     if len(normalized) < 10:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,

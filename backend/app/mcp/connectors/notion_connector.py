@@ -64,8 +64,21 @@ class NotionConnector(BaseConnector):
                 },
             )
 
-        # 2. Live Notion API v1 Execution
+        # 2. Live execution. When the vault holds an OAuth access token,
+        # dispatch over real MCP transport to Notion's GA remote server
+        # first; any MCP failure falls through to the REST path.
+        from .mcp_transport import execute_via_mcp
+
         token = await self._get_auth_token()
+        mcp_result = await execute_via_mcp("notion", token or "", payload) if token else None
+        if mcp_result and (mcp_result.get("url") or mcp_result.get("id")):
+            return ExecutionResult(
+                tool=self.tool_name,
+                status="success",
+                external_url=mcp_result.get("url") or f"https://notion.so/{mcp_result.get('id')}",
+                latency_ms=int((time.time() - start_time) * 1000),
+                raw_response=mcp_result,
+            )
         if not token:
             raise ValueError(
                 "Notion execution failed: No Notion integration token configured. "

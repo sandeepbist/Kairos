@@ -64,9 +64,10 @@ this ticket, schedule that review, update that doc — as structured,
 schema-validated action items. Each one arrives in a review workbench with
 its verbatim source quote, a suggested destination tool, and a confidence
 score. You edit, approve, or dismiss. Approved items execute for real: a
-Jira issue filed, a Notion page created, a calendar event scheduled, or a
-task written to the built-in ledger. Every decision feeds a routing memory
-that sharpens the next batch's suggestions.
+Jira or Linear issue filed, a Notion page created, a calendar event
+scheduled, a task in Todoist or the built-in ledger, or an email draft
+waiting for your send. Every decision feeds a routing memory that sharpens
+the next batch's suggestions.
 
 What it is **not**: a multi-user SaaS. One operator key, one set of
 connected tool accounts, one shared history — see
@@ -113,6 +114,11 @@ The extractor uses Google Gemini or OpenAI when a key is configured and a
 deterministic local parser otherwise, so the full flow works on a fresh
 clone with zero credentials — in that mode no text ever leaves the machine.
 
+For Notion and Jira, connected OAuth tokens dispatch over real MCP
+transport to the vendors' GA remote servers; static API keys keep using
+REST, and any transport failure falls through to REST automatically —
+approved actions run on the best path the credential supports.
+
 ## Features
 
 <table>
@@ -126,8 +132,9 @@ verbatim source quote behind the proposal, so you verify rather than trust.
 
 **Real side effects**
 
-Jira issues, Notion pages, Calendar events, ledger tasks — with SHA-256
-idempotency so retries and replays never double-create anything.
+Issues in Jira or Linear, Notion pages, Calendar events, Todoist tasks,
+email drafts, ledger entries — with SHA-256 idempotency so retries and
+replays never double-create anything.
 
 **Durable by construction**
 
@@ -159,9 +166,9 @@ only in memory for approved executions, and never echoed back.
 
 **Ingest from your notetaker**
 
-Paste a Meetily/Granola/Otter export — front matter, timestamps, and
-summary chrome normalized automatically. Or connect Gmail and let a
-15-minute Temporal Schedule pull new threads.
+Paste a Meetily/Granola/Otter export or a Slack workspace export —
+front matter, timestamps, and summary chrome normalized automatically.
+Or connect Gmail and let a 15-minute Temporal Schedule pull new threads.
 
 **Eval-guarded extraction**
 

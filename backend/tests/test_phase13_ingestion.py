@@ -52,39 +52,50 @@ async def test_export_endpoint_ingests_and_extracts():
     from app.db.session import async_session_factory
     from app.db.models import BatchModel
     from sqlalchemy import select
+    from app.temporal.worker import create_worker, get_temporal_client
 
-    with TestClient(app) as client:
-        export = (
-            "---\ntitle: Product Sync — May 12\n---\n"
-            "# Product Sync\n"
-            "Sarah 00:12  Alex, please file the export normalization ticket\n"
-            "Alex 00:30   I will schedule the export sync meeting on Thursday"
-        )
-        res = client.post(
-            "/api/ingest/export",
-            json={
-                "raw_text": export,
-                "source_type": "meeting_transcript",
-                "export_format": "otter",
-            },
-        )
-        assert res.status_code == 201, res.text
-        batch_id = res.json()["batch_id"]
+    temp_client = await get_temporal_client()
+    worker = create_worker(temp_client)
+    worker_task = asyncio.create_task(worker.run())
+    try:
+        with TestClient(app) as client:
+            export = (
+                "---\ntitle: Product Sync — May 12\n---\n"
+                "# Product Sync\n"
+                "Sarah 00:12  Alex, please file the export normalization ticket\n"
+                "Alex 00:30   I will schedule the export sync meeting on Thursday"
+            )
+            res = client.post(
+                "/api/ingest/export",
+                json={
+                    "raw_text": export,
+                    "source_type": "meeting_transcript",
+                    "export_format": "otter",
+                },
+            )
+            assert res.status_code == 201, res.text
+            batch_id = res.json()["batch_id"]
 
-        # Wait for extraction
-        for _ in range(30):
-            await asyncio.sleep(0.5)
-            data = client.get(f"/api/batches/{batch_id}").json()
-            if data["status"] == "awaiting_approval":
-                break
-        assert data["status"] == "awaiting_approval"
-        assert any("export normalization" in i["description"].lower() for i in data["items"])
+            # Wait for extraction
+            for _ in range(30):
+                await asyncio.sleep(0.5)
+                data = client.get(f"/api/batches/{batch_id}").json()
+                if data["status"] == "awaiting_approval":
+                    break
+            assert data["status"] == "awaiting_approval"
+            assert any("export normalization" in i["description"].lower() for i in data["items"])
 
-        async with async_session_factory() as session:
-            b = (await session.execute(
-                select(BatchModel).where(BatchModel.id == batch_id)
-            )).scalar_one()
-            assert b.raw_text.startswith("[Product Sync — May 12]")
+            async with async_session_factory() as session:
+                b = (await session.execute(
+                    select(BatchModel).where(BatchModel.id == batch_id)
+                )).scalar_one()
+                assert b.raw_text.startswith("[Product Sync — May 12]")
+    finally:
+        worker_task.cancel()
+        try:
+            await worker_task
+        except asyncio.CancelledError:
+            pass
 
 
 @pytest.mark.asyncio
@@ -154,4 +165,77 @@ async def test_gmail_schedule_idempotent():
         try:
             await client.get_schedule_handle("kairos-gmail-poll-test").delete()
         except Exception:
+            pass
+
+
+class TestSlackExportNormalization:
+    def test_slack_json_export(self):
+        from app.api.endpoints.ingest_exports import normalize_slack_export
+
+        raw = '''[
+          {"user_profile": {"display_name": "Sarah"}, "text": "Alex, please file the deploy bug"},
+          {"user": "U123", "text": "I will schedule the release review meeting"}
+        ]'''
+        out = normalize_slack_export(raw)
+        assert "Sarah: Alex, please file the deploy bug" in out
+        assert "U123: I will schedule the release review meeting" in out
+
+    def test_slack_channel_history_dict(self):
+        from app.api.endpoints.ingest_exports import normalize_slack_export
+
+        raw = '''{"messages": [
+          {"user_profile": {"display_name": "DevOps"}, "text": "Please update the runbook doc"}
+        ]}'''
+        out = normalize_slack_export(raw)
+        assert "DevOps: Please update the runbook doc" in out
+
+    def test_copied_thread_text(self):
+        from app.api.endpoints.ingest_exports import normalize_slack_export
+
+        raw = "Sarah  12:04 PM\nAlex, can you draft the vendor email?\nTom  12:06 PM\nOn it."
+        out = normalize_slack_export(raw)
+        assert "Sarah:" in out and "Tom:" in out
+        assert "draft the vendor email" in out
+
+
+@pytest.mark.asyncio
+async def test_slack_export_endpoint_e2e():
+    """Slack-format export flows through to extraction with speaker turns."""
+    import asyncio
+    from starlette.testclient import TestClient
+    from app.main import app
+    from app.temporal.worker import create_worker, get_temporal_client
+
+    temp_client = await get_temporal_client()
+    worker = create_worker(temp_client)
+    worker_task = asyncio.create_task(worker.run())
+    try:
+        with TestClient(app) as client:
+            export = '''[
+              {"user_profile": {"display_name": "Sarah"}, "text": "Alex, please file the deploy bug by Friday"},
+              {"user_profile": {"display_name": "Alex"}, "text": "Sure, I will also schedule the release review meeting Thursday"}
+            ]'''
+            res = client.post(
+                "/api/ingest/export",
+                json={
+                    "raw_text": export,
+                    "source_type": "slack_conversation",
+                    "export_format": "slack_export",
+                },
+            )
+            assert res.status_code == 201, res.text
+            batch_id = res.json()["batch_id"]
+            for _ in range(30):
+                await asyncio.sleep(0.5)
+                data = client.get(f"/api/batches/{batch_id}").json()
+                if data["status"] == "awaiting_approval":
+                    break
+            assert data["status"] == "awaiting_approval"
+            descs = " ".join(i["description"].lower() for i in data["items"])
+            assert "deploy bug" in descs and "release review" in descs
+    finally:
+        worker_task.cancel()
+        try:
+            await worker_task
+        except asyncio.CancelledError:
             pass

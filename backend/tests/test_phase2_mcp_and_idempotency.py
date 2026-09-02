@@ -350,3 +350,75 @@ async def test_action_item_schema_accepts_new_tools():
             confidence=0.9, created_at=datetime.now(timezone.utc),
         )
         assert item.final_tool == tool
+
+
+# ---------------------------------------------------------
+# Test 5: MCP remote transport — fallback semantics
+# ---------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_mcp_transport_noop_without_endpoint_or_token():
+    """execute_via_mcp returns None (REST fallback) when there is no
+    endpoint mapping for the tool or no access token — never raises."""
+    from app.mcp.connectors.mcp_transport import execute_via_mcp
+
+    assert await execute_via_mcp("task_ledger", "token", {}) is None
+    assert await execute_via_mcp("notion", "", {}) is None
+
+
+@pytest.mark.asyncio
+async def test_mcp_transport_unreachable_falls_back_cleanly():
+    """A live connection failure to the remote server returns None —
+    the REST connector path must remain fully usable."""
+    from unittest.mock import patch
+    from app.mcp.connectors.mcp_transport import execute_via_mcp, MCP_REMOTE_ENDPOINTS
+
+    MCP_REMOTE_ENDPOINTS["notion"] = "https://mcp.notion.invalid/mcp"
+    try:
+        result = await execute_via_mcp("notion", "ya29.some-oauth-token", {"title": "x"})
+        assert result is None
+    finally:
+        MCP_REMOTE_ENDPOINTS["notion"] = "https://mcp.notion.com/mcp"
+
+
+def test_mcp_argument_mapping():
+    """Kairos payloads map to remote MCP tool arguments with the right
+    field normalizations."""
+    from app.mcp.connectors.mcp_transport import _mcp_arguments
+
+    notion_args = _mcp_arguments("notion", {"summary": "Roadmap doc", "details": "the body"})
+    assert notion_args["title"] == "Roadmap doc" and notion_args["content"] == "the body"
+
+    jira_args = _mcp_arguments("jira", {"summary": "Fix the bug", "issue_type": "Bug"})
+    assert jira_args["summary"] == "Fix the bug"
+    assert jira_args["issue_type"] == "Bug"
+    assert jira_args["project_key"] == "PROJ"
+
+
+@pytest.mark.asyncio
+async def test_mcp_mocked_dispatch_success():
+    """With a working (mocked) session, a structured MCP result is
+    returned and consumed by the connector — no REST call needed."""
+    from unittest.mock import AsyncMock, patch
+    from app.mcp.connectors.mcp_transport import execute_via_mcp
+
+    class FakeResult:
+        is_error = False
+        structured_content = {"id": "page-123", "url": "https://notion.so/page-123"}
+
+    fake_session = AsyncMock()
+    fake_session.__aenter__ = AsyncMock(return_value=fake_session)
+    fake_session.__aexit__ = AsyncMock(return_value=False)
+    fake_session.call_tool = AsyncMock(return_value=FakeResult())
+
+    with patch("mcp.client.streamable_http.streamable_http_client") as fake_transport, \
+         patch("mcp.ClientSession", return_value=fake_session):
+        fake_ctx = AsyncMock()
+        fake_ctx.__aenter__ = AsyncMock(return_value=(None, None, None))
+        fake_ctx.__aexit__ = AsyncMock(return_value=False)
+        fake_transport.return_value = fake_ctx
+
+        result = await execute_via_mcp("notion", "ya29.token", {"title": "hello"})
+        assert result is not None
+        assert result["url"] == "https://notion.so/page-123"
+        fake_session.call_tool.assert_awaited_once()

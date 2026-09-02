@@ -74,8 +74,22 @@ class JiraConnector(BaseConnector):
                 },
             )
 
-        # 2. Live Atlassian Jira Cloud Execution
+        # 2. Live execution. OAuth access tokens dispatch over real MCP
+        # transport to Atlassian's GA remote server first; any MCP failure
+        # falls through to the REST path below.
+        from .mcp_transport import execute_via_mcp
+
         token, email, domain = await self._get_auth_credentials()
+        mcp_result = await execute_via_mcp("jira", token or "", payload) if token else None
+        if mcp_result and (mcp_result.get("url") or mcp_result.get("key")):
+            return ExecutionResult(
+                tool=self.tool_name,
+                status="success",
+                external_url=mcp_result.get("url")
+                or f"https://{domain or 'company.atlassian.net'}/browse/{mcp_result.get('key')}",
+                latency_ms=int((time.time() - start_time) * 1000),
+                raw_response=mcp_result,
+            )
         target_domain = domain or "company.atlassian.net"
         base_url = f"https://{target_domain}"
 
