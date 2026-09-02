@@ -16,7 +16,10 @@ logger = logging.getLogger(__name__)
 class ExtractedActionItemSchema(BaseModel):
     """Pydantic schema for individual extracted action item."""
     description: str = Field(..., description="Clear, actionable commitment or task description")
-    suggested_tool: Literal["notion", "jira", "calendar", "task_ledger", "linear", "todoist", "email_draft"] = Field(..., description="Recommended destination tool")
+    suggested_tool: Literal[
+        "notion", "jira", "calendar", "task_ledger", "linear", "todoist",
+        "email_draft", "github", "confluence_page", "google_tasks",
+    ] = Field(..., description="Recommended destination tool")
     suggested_due_date: str | None = Field(default=None, description="ISO formatted due date if mentioned (e.g. 2026-09-01)")
     suggested_assignee: str | None = Field(default=None, description="Explicit assignee or owner name")
     speaker: str | None = Field(default=None, description="Speaker name ONLY if labeled in source, null otherwise")
@@ -48,6 +51,9 @@ def deterministic_fallback_extractor(
     linear_keywords = ["linear", "linear issue", "backlog item", "project board"]
     todoist_keywords = ["todoist", "to-do list", "todo item", "personal task"]
     email_draft_keywords = ["email draft", "draft email", "draft an email", "draft a email", "reply to", "write to", "send an email", "draft the email", "follow-up email", "email the vendor", "email to"]
+    github_keywords = ["github", "github issue", "open an issue", "file an issue on github", "track it in the repo", "in the repo"]
+    confluence_keywords = ["confluence", "confluence page", "wiki page", "decision log", "meeting notes page", "write up the design doc"]
+    google_tasks_keywords = ["google task", "google tasks", "add to my google tasks", "my tasks list", "tasks list"]
     jira_keywords = ["bug", "ticket", "issue", "crash", "deploy", "pipeline", "auth", "refactor", "api", "endpoint", "pull request", "pr"]
     notion_keywords = ["document", "doc", "spec", "roadmap", "notes", "wiki", "guide", "rfc", "summary", "plan"]
 
@@ -107,9 +113,21 @@ def deterministic_fallback_extractor(
             suggested_assignee = None
 
             # Pattern A: Direct address at start: "Alex, please..." or "Alex: please..." or "Alex please..."
-            direct_address_match = re.match(r"^([A-Z][a-z]+)[,\s:]+(?:please|can you|could you|will you|take care of|look into)\b", content, re.IGNORECASE)
+            # Pattern A: Direct address at start: "Alex, please..." or
+            # "Alex: please..." or "Alex please..." — the follow word list
+            # keeps false owner matches (e.g. "Dev, open the docs") low.
+            direct_address_match = re.match(
+                r"^([A-Z][a-z]+)[,\s:]+(?:please|can you|could you|will you|take care of|look into)\b",
+                content, re.IGNORECASE,
+            )
             if direct_address_match:
                 suggested_assignee = direct_address_match.group(1).strip()
+            # Pattern A1: bare imperative after a name — "Dev, open a
+            # GitHub issue…" — where the first verb is the request itself.
+            elif re.match(r"^[A-Z][a-z]+,\s+(?:open|create|file|add|update|fix|write|send|schedule|review|draft|put)\b", content):
+                bare_name = re.match(r"^([A-Z][a-z]+),", content)
+                if bare_name:
+                    suggested_assignee = bare_name.group(1).strip()
             # Bullet-form owner ("- Karan to schedule…") is the assignee.
             if bullet_owner:
                 suggested_assignee = bullet_owner
@@ -157,6 +175,12 @@ def deterministic_fallback_extractor(
                 explicit_tool = "calendar"
             elif re.search(r"\b(?:in|to|under)\s+(?:the\s+)?(?:notion|wiki)\b", content_lower):
                 explicit_tool = "notion"
+            elif re.search(r"\b(?:on|in|to|under)\s+(?:the\s+)?(?:github|repo|repository)\b", content_lower):
+                explicit_tool = "github"
+            elif re.search(r"\b(?:in|to)\s+(?:the\s+)?confluence\b|\bconfluence\s+page\b", content_lower):
+                explicit_tool = "confluence_page"
+            elif re.search(r"\b(?:my\s+)?google\s+tasks?\b", content_lower):
+                explicit_tool = "google_tasks"
             actionability_type = "task"
             confidence = 0.82
             priority = "medium"
@@ -165,6 +189,10 @@ def deterministic_fallback_extractor(
                 suggested_tool = explicit_tool
                 actionability_type = "calendar_event" if explicit_tool == "calendar" else "task"
                 confidence = 0.9
+            elif any(k in content_lower for k in github_keywords):
+                suggested_tool = "github"
+                actionability_type = "task"
+                confidence = 0.88
             elif any(k in content_lower for k in email_draft_keywords):
                 suggested_tool = "email_draft"
                 actionability_type = "task"
@@ -173,6 +201,14 @@ def deterministic_fallback_extractor(
                 suggested_tool = "linear"
                 actionability_type = "task"
                 confidence = 0.87
+            elif any(k in content_lower for k in confluence_keywords):
+                suggested_tool = "confluence_page"
+                actionability_type = "task"
+                confidence = 0.87
+            elif any(k in content_lower for k in google_tasks_keywords):
+                suggested_tool = "google_tasks"
+                actionability_type = "task"
+                confidence = 0.86
             elif any(k in content_lower for k in todoist_keywords):
                 suggested_tool = "todoist"
                 actionability_type = "task"
@@ -205,6 +241,25 @@ def deterministic_fallback_extractor(
                     "title": content[:120],
                     "description": f"Extracted from {source_type}: {line}",
                     "priority": priority,
+                }
+            elif suggested_tool == "github":
+                tool_payload = {
+                    "title": content[:200],
+                    "description": f"Extracted from {source_type}: {line}",
+                    "repo": os.getenv("GITHUB_TARGET_REPO", ""),
+                    "labels": ["kairos"],
+                }
+            elif suggested_tool == "confluence_page":
+                tool_payload = {
+                    "title": content[:100],
+                    "content": f"Context: {line}",
+                    "space_key": os.getenv("CONFLUENCE_SPACE_KEY", ""),
+                }
+            elif suggested_tool == "google_tasks":
+                tool_payload = {
+                    "title": content[:200],
+                    "notes": f"Captured from: {line}",
+                    "due_date": (date.today() + timedelta(days=3)).isoformat(),
                 }
             elif suggested_tool == "todoist":
                 tool_payload = {
@@ -500,7 +555,14 @@ async def extract_node(state: AgentState) -> dict[str, Any]:
         "Analyze the entire multi-turn conversation cohesively to identify agreed dates, times, owners, and commitments.\n"
         "For each item, output:\n"
         "- description: clear task or meeting description (e.g. 'Project review meeting on August 29 at 5:00 PM')\n"
-        "- suggested_tool: notion, jira, calendar, or task_ledger\n"
+        "- suggested_tool: one of notion, jira, calendar, task_ledger, linear, todoist, "
+        "email_draft, github, confluence_page, google_tasks — "
+        "pick the destination the speaker asked for: Jira/Linear for tracked bugs and issues, "
+        "GitHub when the action belongs on a repository, "
+        "Google Calendar for meetings and scheduled events, Notion for docs and specs, "
+        "Confluence when the speaker names it or asks for a decision log or meeting-notes page, "
+        "Todoist or Google Tasks for personal to-dos, email_draft when someone should write an email, "
+        "and task_ledger when no external tool is named\n"
         "- source_snippet: verbatim exact quote/line from source text\n"
         "- speaker: speaker name if labeled (e.g. 'Sarah: ...'), null otherwise\n"
         "- suggested_assignee: assigned owner if mentioned\n"

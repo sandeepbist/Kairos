@@ -37,10 +37,14 @@ async def get_connectors_status(
     connected_providers = set(result.scalars().all())
 
     # Vault provider aliases: a tool may authenticate via a differently
-    # named provider credential (email_draft uses the gmail token).
+    # named provider credential (email_draft uses the gmail token;
+    # confluence_page rides the jira/Atlassian credential; google_tasks
+    # may share the calendar token when the grant bundled both scopes).
     tool_provider_aliases = {
         "calendar": {"google_calendar", "calendar"},
         "email_draft": {"gmail", "email_draft"},
+        "confluence_page": {"jira", "confluence"},
+        "google_tasks": {"google_tasks", "google_calendar"},
     }
     connectors_info = {}
     for tool_name, status_dict in mcp_statuses.items():
@@ -78,7 +82,10 @@ async def save_oauth_token(
 ):
     """Encrypts and stores user OAuth or LLM API credentials in Postgres vault."""
     provider = request.provider.lower().strip()
-    valid_providers = ["notion", "jira", "google_calendar", "gmail", "linear", "todoist", "gemini", "google_ai", "openai"]
+    valid_providers = [
+        "notion", "jira", "google_calendar", "gmail", "linear", "todoist",
+        "gemini", "google_ai", "openai", "github", "confluence", "google_tasks",
+    ]
     if provider not in valid_providers:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -203,3 +210,62 @@ async def setup_gmail_schedule(
         )
 
     return {"status": "scheduled", "interval_minutes": 15}
+
+
+@router.post("/slack/schedule")
+async def setup_slack_schedule(
+    db: AsyncSession = Depends(get_db),
+):
+    """Creates (or updates) the Temporal Schedule that runs the Slack
+    Socket Mode listen cycle.
+
+    The cycle runs every 5 minutes and listens for a bounded window
+    (SLACK_LISTEN_SECONDS, default 240s), so the bot sees ~continuous
+    coverage without a long-lived process to supervise. Idempotent like
+    the Gmail schedule: reconnecting Slack just re-arms it. Without
+    SLACK_APP_TOKEN/SLACK_BOT_TOKEN in the worker's environment every
+    cycle is a clean no-op.
+    """
+    from datetime import timedelta as _td
+
+    from temporalio.client import (
+        ScheduleActionStartWorkflow,
+        Schedule,
+        ScheduleAlreadyRunningError,
+        ScheduleIntervalSpec,
+        ScheduleSpec,
+    )
+    from temporalio.common import RetryPolicy
+
+    from app.temporal.worker import get_temporal_client
+    from app.temporal.slack_ingest import SlackIngestWorkflow
+    from app.config import settings
+
+    try:
+        client = await get_temporal_client()
+        await client.create_schedule(
+            id="kairos-slack-listen",
+            schedule=Schedule(
+                action=ScheduleActionStartWorkflow(
+                    workflow=SlackIngestWorkflow.run,
+                    id="slack-listen-cycle",
+                    task_queue=settings.TEMPORAL_TASK_QUEUE,
+                    retry_policy=RetryPolicy(maximum_attempts=2),
+                ),
+                spec=ScheduleSpec(
+                    intervals=[ScheduleIntervalSpec(every=_td(minutes=5))],
+                ),
+            ),
+        )
+    except ScheduleAlreadyRunningError:
+        return {"status": "scheduled", "interval_minutes": 5, "note": "existing schedule kept"}
+    except Exception as e:
+        from app.core.redaction import redact_error
+        from fastapi import HTTPException, status as _status
+
+        raise HTTPException(
+            status_code=_status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"Could not create listen schedule: {redact_error(e)}",
+        )
+
+    return {"status": "scheduled", "interval_minutes": 5}
