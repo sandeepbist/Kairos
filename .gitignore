@@ -76,3 +76,4 @@ temporal.db*
 *.swp
 *.swo
 *~
+.mimosa/

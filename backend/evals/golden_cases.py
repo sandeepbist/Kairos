@@ -300,4 +300,41 @@ GOLDEN_CASES: list[dict] = [
             },
         ],
     },
+    {
+        "id": "github-issue",
+        "raw_text": "Lead: Dev, open a GitHub issue for the flaky payment retry test in the repo.",
+        "source_type": "meeting_transcript",
+        "expected_items": [
+            {
+                "suggested_tool": "github",
+                "speaker": "Lead",
+                "suggested_assignee": "Dev",
+                "description_contains": ["flaky", "payment"],
+            },
+        ],
+    },
+    {
+        "id": "confluence-decision-log",
+        "raw_text": "Sarah: We should write the decision log up as a Confluence page after this call.",
+        "source_type": "meeting_transcript",
+        "expected_items": [
+            {
+                "suggested_tool": "confluence_page",
+                "speaker": "Sarah",
+                "description_contains": ["decision log"],
+            },
+        ],
+    },
+    {
+        "id": "google-tasks-personal",
+        "raw_text": "Maya: Add picking up the visa documents to my Google Tasks.",
+        "source_type": "meeting_transcript",
+        "expected_items": [
+            {
+                "suggested_tool": "google_tasks",
+                "speaker": "Maya",
+                "description_contains": ["visa"],
+            },
+        ],
+    },
 ]
