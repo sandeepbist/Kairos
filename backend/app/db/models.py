@@ -36,6 +36,9 @@ class BatchModel(Base):
     status = Column(String(30), nullable=False, default="processing", index=True)
     token_count = Column(Integer, nullable=True)
     temporal_workflow_id = Column(String(100), nullable=True, index=True)
+    # Multi-user prep: nullable ownership dimension (see migration 0003).
+    user_id = Column(String(36), nullable=True, index=True)
+    org_id = Column(String(36), nullable=True)
     created_at = Column(DateTime(timezone=True), default=utc_now, nullable=False)
     updated_at = Column(DateTime(timezone=True), default=utc_now, onupdate=utc_now, nullable=False)
 
@@ -73,6 +76,8 @@ class ActionItemModel(Base):
     external_url = Column(String(500), nullable=True)
     rejection_reason = Column(Text, nullable=True)
     executed_at = Column(DateTime(timezone=True), nullable=True)
+    user_id = Column(String(36), nullable=True)
+    org_id = Column(String(36), nullable=True)
     created_at = Column(DateTime(timezone=True), default=utc_now, nullable=False)
     updated_at = Column(DateTime(timezone=True), default=utc_now, onupdate=utc_now, nullable=False)
 
@@ -99,6 +104,8 @@ class ExecutionLogModel(Base):
     item_description = Column(Text, nullable=True)
     latency_ms = Column(Integer, nullable=True)
     error = Column(Text, nullable=True)
+    user_id = Column(String(36), nullable=True)
+    org_id = Column(String(36), nullable=True)
     executed_at = Column(DateTime(timezone=True), default=utc_now, nullable=False)
 
     # Relationships
@@ -126,6 +133,8 @@ class RoutingFeedbackModel(Base):
     # varies by provider (Gemini 768 / OpenAI 1536) and in-process cosine
     # over the recent window is sub-5ms at operator scale.
     embedding = Column(JSON, nullable=True)
+    user_id = Column(String(36), nullable=True)
+    org_id = Column(String(36), nullable=True)
     created_at = Column(DateTime(timezone=True), default=utc_now, nullable=False)
 
 
@@ -171,5 +180,8 @@ class OAuthTokenModel(Base):
     refresh_token_enc = Column(Text, nullable=True)
     expires_at = Column(DateTime(timezone=True), nullable=True)
     scopes = Column(Text, nullable=True)
+    # Multi-user prep: per-user vault rows land as (user_id, provider)
+    # when per-user OAuth exists; the unique constraint moves then.
+    user_id = Column(String(36), nullable=True)
     created_at = Column(DateTime(timezone=True), default=utc_now, nullable=False)
     updated_at = Column(DateTime(timezone=True), default=utc_now, onupdate=utc_now, nullable=False)
