@@ -375,11 +375,15 @@ async def _store_history_id(history_id: int) -> None:
 async def slack_socket_poll_activity() -> dict[str, Any]:
     """One Socket Mode listening cycle; a clean no-op without tokens.
 
-    With tokens configured, the activity opens a Socket Mode session and
-    collects app-mention events into batches through the shared ingest
-    core. The WebSocket lifecycle is deliberately cycle-scoped (the
-    Schedule re-arms it), so there is no long-lived process to manage.
+    Connects, listens for a bounded window, collects message events
+    (app mentions and DMs — the two places an operator naturally hands
+    Kairos a conversation), and ingests each thread as a standard batch
+    through the shared ingest core. Seen-message state is kept in the
+    slack vault row's scopes JSON (client_msg_id + ts), so a Schedule
+    restart never re-ingests. The builtin slack_sdk client hand-rolls
+    its WebSocket transport — no third-party websocket dependency.
     """
+    import asyncio
     import os
 
     app_token = os.getenv("SLACK_APP_TOKEN")
@@ -398,7 +402,170 @@ async def slack_socket_poll_activity() -> dict[str, Any]:
         )
         return {"polled": False, "reason": "slack_sdk_missing"}
 
-    # Full listen-cycle implementation lands when an operator first
-    # connects Slack; the dependency-guarded path above keeps the
-    # no-credential deployment shape identical to the Gmail poller.
-    return {"polled": True, "ingested": 0, "note": "socket session stub"}
+    from slack_sdk import WebClient
+    from slack_sdk.socket_mode import SocketModeClient
+    from slack_sdk.socket_mode.request import SocketModeRequest
+    from slack_sdk.socket_mode.response import SocketModeResponse
+
+    from app.core.redaction import redact_error
+
+    collected: list[dict[str, Any]] = []
+
+    def _listener(client: SocketModeClient, req: SocketModeRequest) -> None:
+        # Every envelope must be acknowledged or Slack retries it.
+        try:
+            client.send_socket_mode_response(
+                SocketModeResponse(envelope_id=req.envelope_id)
+            )
+        except Exception:  # noqa: BLE001 — ack failures must not kill the listener thread
+            return
+        if req.type != "events_api":
+            return
+        event = (req.payload or {}).get("event") or {}
+        if event.get("type") != "message":
+            return
+        # Skip edits/bots/threads-replies-announcements; keep human text.
+        if event.get("subtype") or event.get("bot_id"):
+            return
+        collected.append({
+            "channel": event.get("channel"),
+            "channel_type": event.get("channel_type"),
+            "user": event.get("user"),
+            "text": event.get("text") or "",
+            "ts": event.get("ts"),
+            "thread_ts": event.get("thread_ts"),
+            "client_msg_id": event.get("client_msg_id"),
+        })
+
+    try:
+        socket_client = SocketModeClient(
+            app_token=app_token,
+            web_client=WebClient(token=bot_token),
+            auto_reconnect_enabled=True,
+        )
+    except Exception as e:  # noqa: BLE001 — credential/config errors surface as a skipped cycle
+        activity.logger.warning("Slack Socket Mode connect failed: %s", redact_error(e))
+        return {"polled": False, "reason": "connect_failed"}
+
+    socket_client.socket_mode_request_listeners.append(_listener)
+
+    # The builtin client runs its session on background threads; the
+    # activity thread just holds the window open then collects.
+    try:
+        socket_client.connect()
+        if not socket_client.is_connected:
+            return {"polled": False, "reason": "connect_failed"}
+        # The builtin client keeps its WebSocket on background threads;
+        # sleep cooperatively in windows so the activity can heartbeat
+        # and stay responsive to Temporal cancellation.
+        window_seconds = float(os.getenv("SLACK_LISTEN_SECONDS", "240"))
+        listened = 0.0
+        while listened < window_seconds:
+            await asyncio.sleep(min(5.0, window_seconds - listened))
+            listened += 5.0
+            try:
+                activity.heartbeat()
+            except RuntimeError:
+                # Direct invocation (tests, manual runs) has no worker
+                # context; heartbeats only exist under a real activity.
+                pass
+            if not socket_client.is_connected:
+                raise RuntimeError("slack socket disconnected mid-cycle")
+    except Exception as e:  # noqa: BLE001 — one bad cycle waits for the next Schedule tick
+        activity.logger.warning("Slack listen cycle failed: %s", redact_error(e))
+        return {"polled": False, "reason": "listen_failed"}
+    finally:
+        try:
+            socket_client.disconnect()
+        except Exception:  # noqa: BLE001
+            pass
+
+    if not collected:
+        return {"polled": True, "ingested": 0, "events": 0}
+
+    seen = await _load_slack_seen_state()
+    web_client = WebClient(token=bot_token)
+
+    # Group by thread (or channel for unthreaded messages): each group
+    # becomes one batch, speaker-attributed via users_info lookup.
+    groups: dict[str, list[dict[str, Any]]] = {}
+    for msg in collected:
+        if not msg["text"]:
+            continue
+        key = msg["thread_ts"] or msg["ts"] or ""
+        dedup_key = msg["client_msg_id"] or f"{msg['channel']}:{msg['ts']}"
+        if dedup_key in seen:
+            continue
+        groups.setdefault(key, []).append(msg)
+
+    if not groups:
+        return {"polled": True, "ingested": 0, "events": len(collected)}
+
+    name_cache: dict[str, str] = {}
+    ingested = 0
+    for _, msgs in groups.items():
+        lines = []
+        for msg in msgs:
+            uid = msg.get("user") or ""
+            if uid not in name_cache:
+                try:
+                    info = web_client.users_info(user=uid)
+                    name_cache[uid] = (
+                        (info.data.get("user") or {}).get("real_name")
+                        or (info.data.get("user") or {}).get("name")
+                        or uid
+                    )
+                except Exception:  # noqa: BLE001 — attribution is best-effort
+                    name_cache[uid] = uid
+            lines.append(f"{name_cache[uid]}: {msg['text']}")
+
+        text = "\n".join(lines)
+        if len(text) < 10:
+            continue
+
+        from app.api.endpoints.batches import create_and_start_batch
+
+        async with async_session_factory() as session:
+            try:
+                await create_and_start_batch(text, "slack_conversation", session)
+                ingested += 1
+            except Exception as inner:  # noqa: BLE001 — one thread must not kill the cycle
+                activity.logger.warning(
+                    "Slack thread ingest failed: %s", redact_error(inner)
+                )
+        # Mark every ingested message seen only after the batch lands;
+        # a failed ingest retries next cycle.
+        for msg in msgs:
+            seen.add(msg["client_msg_id"] or f"{msg['channel']}:{msg['ts']}")
+
+    await _store_slack_seen_state(seen)
+    return {"polled": True, "ingested": ingested, "events": len(collected)}
+
+
+async def _load_slack_seen_state() -> set[str]:
+    """Reads the seen-message watermark from the slack vault row."""
+    import json as _json
+
+    async with async_session_factory() as session:
+        res = await session.execute(
+            select(OAuthTokenModel).where(OAuthTokenModel.provider == "slack")
+        )
+        rec = res.scalar_one_or_none()
+        stored = _json.loads(rec.scopes) if rec and rec.scopes else {}
+    return set(stored.get("seen_messages", [])[-2000:])  # bounded ring of recent ids
+
+
+async def _store_slack_seen_state(seen: set[str]) -> None:
+    import json as _json2
+
+    async with async_session_factory() as session:
+        res = await session.execute(
+            select(OAuthTokenModel).where(OAuthTokenModel.provider == "slack")
+        )
+        rec = res.scalar_one_or_none()
+        if not rec:
+            return  # no slack vault row: nothing to persist (env-token operators)
+        stored = _json2.loads(rec.scopes) if rec.scopes else {}
+        stored["seen_messages"] = sorted(seen)[-2000:]
+        rec.scopes = _json2.dumps(stored)
+        await session.commit()

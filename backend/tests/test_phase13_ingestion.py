@@ -262,3 +262,238 @@ def test_slack_workflow_registered():
 
     src = inspect.getsource(create_worker)
     assert "SlackIngestWorkflow" in src
+
+
+@pytest.mark.asyncio
+async def test_slack_listen_cycle_ingests_threads(monkeypatch):
+    """A full listen cycle: connect → collect events → attribute
+    speakers via users_info → ingest one batch per thread → record
+    seen state. The WebSocket client is faked; the grouping, dedup,
+    attribution, and ingest paths run for real."""
+    import os
+
+    from sqlalchemy import delete as _delete
+
+    from sqlalchemy import select
+
+    from app.db.session import async_session_factory
+    from app.db.models import BatchModel, OAuthTokenModel
+    from app.temporal.activities import slack_socket_poll_activity
+
+    monkeypatch.setenv("SLACK_APP_TOKEN", "xapp-test-token")
+    monkeypatch.setenv("SLACK_BOT_TOKEN", "xoxb-test-token")
+    monkeypatch.setenv("SLACK_LISTEN_SECONDS", "0.1")
+
+    events = [
+        {  # thread one, two turns, two speakers
+            "type": "message",
+            "channel": "C1", "channel_type": "channel", "user": "U1",
+            "text": "Alex, please file the checkout bug by Friday",
+            "ts": "1700000000.000100", "thread_ts": "1700000000.000100",
+            "client_msg_id": "m-1",
+        },
+        {
+            "type": "message",
+            "channel": "C1", "channel_type": "channel", "user": "U2",
+            "text": "On it — I will also schedule the release review meeting",
+            "ts": "1700000000.000200", "thread_ts": "1700000000.000100",
+            "client_msg_id": "m-2",
+        },
+        {  # standalone DM to the bot
+            "type": "message",
+            "channel": "D1", "channel_type": "im", "user": "U3",
+            "text": "Can you update the vendor onboarding doc in the wiki?",
+            "ts": "1700000000.000300", "thread_ts": None,
+            "client_msg_id": "m-3",
+        },
+        {  # bot/edited message: must be skipped
+            "type": "message",
+            "channel": "C1", "channel_type": "channel", "user": "U1",
+            "text": "changed my mind", "ts": "1700000000.000400",
+            "thread_ts": "1700000000.000100", "client_msg_id": "m-4",
+            "subtype": "message_changed",
+        },
+    ]
+
+    class FakeUsersInfo:
+        data = {
+            "U1": {"user": {"real_name": "Sarah Chen"}},
+            "U2": {"user": {"real_name": "Alex Rivera"}},
+            "U3": {"user": {"real_name": "Priya Patel"}},
+        }
+
+        def __call__(self, user):
+            return self.data[user]
+
+    class FakeSocketClient:
+        def __init__(self, app_token, web_client=None, auto_reconnect_enabled=True):
+            self.socket_mode_request_listeners = []
+            self.is_connected = False
+
+        def connect(self):
+            self.is_connected = True
+            # Replay the events as if they arrived on the socket.
+            for ev in events:
+                from slack_sdk.socket_mode.request import SocketModeRequest
+
+                req = SocketModeRequest(
+                    type="events_api",
+                    envelope_id=f"env-{ev['client_msg_id']}",
+                    payload={"event": ev},
+                )
+                for listener in self.socket_mode_request_listeners:
+                    listener(self, req)
+
+        def disconnect(self):
+            self.is_connected = False
+
+        def send_socket_mode_response(self, response):
+            pass
+
+    monkeypatch.setattr(
+        "slack_sdk.socket_mode.SocketModeClient", FakeSocketClient, raising=False
+    )
+    monkeypatch.setattr(
+        "slack_sdk.WebClient.users_info", FakeUsersInfo(), raising=False
+    )
+
+    # clean slate: no slack vault row state from earlier runs
+    async with async_session_factory() as session:
+        await session.execute(_delete(OAuthTokenModel).where(OAuthTokenModel.provider == "slack"))
+        await session.commit()
+
+    result = await slack_socket_poll_activity()
+    assert result["polled"] is True
+    assert result["ingested"] == 2  # one thread + one DM; edited msg skipped
+    assert result["events"] == 3  # the edited/subtype message is filtered at collection
+
+    # Both batches landed with speaker-attributed text.
+    async with async_session_factory() as session:
+        res = await session.execute(
+            select(BatchModel).where(BatchModel.source_type == "slack_conversation")
+        )
+        batches = res.scalars().all()
+        assert len(batches) >= 2
+    os.environ.pop("SLACK_LISTEN_SECONDS", None)
+
+
+@pytest.mark.asyncio
+async def test_slack_listen_cycle_dedups_seen_messages(monkeypatch):
+    """Messages already recorded in the vault's seen state are not
+    re-ingested — the Schedule can restart freely without duplicates."""
+    from sqlalchemy import delete as _delete
+
+    from app.db.session import async_session_factory
+    from app.db.models import OAuthTokenModel
+    from app.temporal.activities import (
+        slack_socket_poll_activity,
+        _store_slack_seen_state,
+    )
+
+    monkeypatch.setenv("SLACK_APP_TOKEN", "xapp-test-token")
+    monkeypatch.setenv("SLACK_BOT_TOKEN", "xoxb-test-token")
+    monkeypatch.setenv("SLACK_LISTEN_SECONDS", "0.1")
+
+    # A slack vault row whose seen state already contains m-1.
+    from app.core.security import encrypt_token
+
+    async with async_session_factory() as session:
+        await session.execute(_delete(OAuthTokenModel).where(OAuthTokenModel.provider == "slack"))
+        session.add(OAuthTokenModel(
+            provider="slack",
+            access_token_enc=encrypt_token("xoxb-test-token"),
+        ))
+        await session.commit()
+    await _store_slack_seen_state({"m-1"})
+
+    class FakeSocketClient:
+        def __init__(self, app_token, web_client=None, auto_reconnect_enabled=True):
+            self.socket_mode_request_listeners = []
+            self.is_connected = False
+
+        def connect(self):
+            self.is_connected = True
+            from slack_sdk.socket_mode.request import SocketModeRequest
+
+            ev = {
+                "type": "message",
+                "channel": "C1", "channel_type": "channel", "user": "U1",
+                "text": "Alex, please file the checkout bug by Friday",
+                "ts": "1700000000.000100", "thread_ts": "1700000000.000100",
+                "client_msg_id": "m-1",
+            }
+            req = SocketModeRequest(
+                type="events_api", envelope_id="env-1", payload={"event": ev},
+            )
+            for listener in self.socket_mode_request_listeners:
+                listener(self, req)
+
+        def disconnect(self):
+            self.is_connected = False
+
+        def send_socket_mode_response(self, response):
+            pass
+
+    monkeypatch.setattr(
+        "slack_sdk.socket_mode.SocketModeClient", FakeSocketClient, raising=False
+    )
+
+    result = await slack_socket_poll_activity()
+    assert result["polled"] is True
+    assert result["ingested"] == 0  # m-1 was already seen
+
+    async with async_session_factory() as session:
+        await session.execute(_delete(OAuthTokenModel).where(OAuthTokenModel.provider == "slack"))
+        await session.commit()
+
+
+@pytest.mark.asyncio
+async def test_slack_schedule_idempotent():
+    """Creating the listen schedule twice keeps one schedule running."""
+    from datetime import timedelta
+
+    from temporalio.client import (
+        Client,
+        Schedule,
+        ScheduleActionStartWorkflow,
+        ScheduleIntervalSpec,
+        ScheduleSpec,
+    )
+    from temporalio.client import ScheduleAlreadyRunningError
+
+    from app.config import settings
+    from app.temporal.slack_ingest import SlackIngestWorkflow
+
+    client = await Client.connect("localhost:7234", namespace="default")
+
+    async def create():
+        return await client.create_schedule(
+            id="kairos-slack-listen-test",
+            schedule=Schedule(
+                action=ScheduleActionStartWorkflow(
+                    workflow=SlackIngestWorkflow.run,
+                    id="slack-listen-cycle-test",
+                    task_queue=settings.TEMPORAL_TASK_QUEUE,
+                ),
+                spec=ScheduleSpec(intervals=[ScheduleIntervalSpec(every=timedelta(minutes=5))]),
+            ),
+        )
+
+    try:
+        await client.get_schedule_handle("kairos-slack-listen-test").delete()
+    except Exception:
+        pass
+
+    try:
+        await create()
+        duplicate_rejected = False
+        try:
+            await create()
+        except ScheduleAlreadyRunningError:
+            duplicate_rejected = True
+        assert duplicate_rejected
+    finally:
+        try:
+            await client.get_schedule_handle("kairos-slack-listen-test").delete()
+        except Exception:
+            pass

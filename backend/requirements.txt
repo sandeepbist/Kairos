@@ -17,6 +17,9 @@ langchain-openai>=0.3.0
 # Model Context Protocol (MCP)
 mcp>=2.1.0
 
+# Slack Socket Mode (ingestion bot; builtin websocket client, no extra deps)
+slack-sdk>=3.44.0
+
 # Durable Execution
 temporalio>=1.8.0
 
