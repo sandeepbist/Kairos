@@ -5,6 +5,7 @@ from temporalio.client import Client
 from temporalio.worker import Worker
 from app.config import settings
 from .workflows import ProcessBatchWorkflow
+from .gmail_poll import GmailPollWorkflow
 from .activities import (
     extract_and_route_activity,
     persist_extracted_items_activity,
@@ -13,6 +14,7 @@ from .activities import (
     update_routing_memory_activity,
     complete_batch_activity,
     expire_batch_activity,
+    ingest_gmail_history_activity,
 )
 
 logger = logging.getLogger(__name__)
@@ -31,7 +33,7 @@ def create_worker(client: Client) -> Worker:
     return Worker(
         client,
         task_queue=settings.TEMPORAL_TASK_QUEUE,
-        workflows=[ProcessBatchWorkflow],
+        workflows=[ProcessBatchWorkflow, GmailPollWorkflow],
         activities=[
             extract_and_route_activity,
             persist_extracted_items_activity,
@@ -40,6 +42,7 @@ def create_worker(client: Client) -> Worker:
             update_routing_memory_activity,
             complete_batch_activity,
             expire_batch_activity,
+            ingest_gmail_history_activity,
         ],
     )
 

@@ -86,6 +86,7 @@ def test_rate_limit_write_burst(monkeypatch):
     assert retry >= 1
 
 
+
 def test_rate_limit_read_burst(client):
     """Bursting >60 reads/min from one IP must produce a 429."""
     codes = [client.get("/api/history").status_code for _ in range(65)]
@@ -145,7 +146,7 @@ async def test_batch_deletion_erasure():
         )
         await session.commit()
 
-    from fastapi import HTTPException, status
+    from fastapi import HTTPException
     from app.api.endpoints.history import delete_batch
 
     async with factory() as db:
@@ -227,7 +228,7 @@ def test_rate_limit_key_immune_to_xff_spoofing():
     and with TRUST_PROXY on it uses only the LAST XFF entry (the hop added by
     the proxy in front), never the client-controlled left side.
     """
-    from app.core.ratelimit import InMemoryRateLimiter, _client_ip
+    from app.core.ratelimit import _client_ip
 
     class FakeClient:
         host = "203.0.113.50"  # spoofed rewrite by uvicorn

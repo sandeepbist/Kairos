@@ -20,32 +20,58 @@ from app.core.telemetry import telemetry
 router = APIRouter(prefix="/batches", tags=["batches"])
 
 
-@router.post("/ingest", response_model=dict[str, Any], status_code=status.HTTP_201_CREATED)
-async def ingest_batch(
-    request: BatchIngestRequest,
-    db: AsyncSession = Depends(get_db),
-):
-    """Ingests unstructured text and triggers the durable Temporal extraction workflow."""
+async def create_and_start_batch(
+    raw_text: str,
+    source_type: str,
+    db: AsyncSession,
+) -> dict[str, Any]:
+    """Shared ingest core: creates the batch row and starts the workflow.
+
+    Both the HTTP endpoint and the Gmail poller go through here so every
+    batch — pasted, exported, or polled — gets identical status handling
+    and telemetry.
+    """
     batch_id = str(uuid.uuid4())
     workflow_id = f"batch-wf-{batch_id}"
 
-    # 1. Create Batch record in PostgreSQL
     batch = BatchModel(
         id=batch_id,
-        source_type=request.source_type,
-        raw_text=request.raw_text,
+        source_type=source_type,
+        raw_text=raw_text,
         status="processing",
         temporal_workflow_id=workflow_id,
     )
     db.add(batch)
     await db.commit()
 
-    # 2. Trigger Temporal Workflow
+    return await _dispatch_workflow_and_respond(
+        batch, batch_id, workflow_id, raw_text, source_type, db
+    )
+
+
+@router.post("/ingest", response_model=dict[str, Any], status_code=status.HTTP_201_CREATED)
+async def ingest_batch(
+    request: BatchIngestRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """Ingests unstructured text and triggers the durable Temporal extraction workflow."""
+    return await create_and_start_batch(request.raw_text, request.source_type, db)
+
+
+async def _dispatch_workflow_and_respond(
+    batch: BatchModel,
+    batch_id: str,
+    workflow_id: str,
+    raw_text: str,
+    source_type: str,
+    db: AsyncSession,
+) -> dict[str, Any]:
+    """Starts the extraction workflow for an existing batch row."""
     try:
         client = await get_temporal_client()
         await client.start_workflow(
             ProcessBatchWorkflow.run,
-            args=[batch_id, request.raw_text, request.source_type, settings.SANDBOX_MODE],
+            args=[batch_id, raw_text, source_type, settings.SANDBOX_MODE],
             id=workflow_id,
             task_queue=settings.TEMPORAL_TASK_QUEUE,
         )
@@ -60,7 +86,7 @@ async def ingest_batch(
         )
 
     # Log telemetry trace link
-    telemetry.log_trace(batch_id=batch_id, name="batch_ingestion", metadata={"source_type": request.source_type})
+    telemetry.log_trace(batch_id=batch_id, name="batch_ingestion", metadata={"source_type": source_type})
 
     return {
         "batch_id": batch_id,

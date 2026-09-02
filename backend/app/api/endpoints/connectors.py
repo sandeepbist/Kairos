@@ -137,3 +137,61 @@ async def toggle_sandbox_mode(
             f"{settings.SANDBOX_MODE} — applies to newly ingested batches."
         ),
     }
+
+
+@router.post("/gmail/schedule")
+async def setup_gmail_schedule(
+    db: AsyncSession = Depends(get_db),
+):
+    """Creates (or updates) the Temporal Schedule that polls Gmail.
+
+    Idempotent: the schedule id is fixed, so reconnecting Gmail just
+    re-arms the same 15-minute poll. Deleting the gmail vault
+    credential makes polls no-op (the activity checks the vault
+    first).
+    """
+    from datetime import timedelta as _td
+
+    from temporalio.client import (
+        ScheduleActionStartWorkflow,
+        Schedule,
+        ScheduleAlreadyRunningError,
+        ScheduleIntervalSpec,
+        ScheduleSpec,
+    )
+    from temporalio.common import RetryPolicy
+
+    from app.temporal.worker import get_temporal_client
+    from app.temporal.gmail_poll import GmailPollWorkflow
+    from app.config import settings
+
+    try:
+        client = await get_temporal_client()
+        await client.create_schedule(
+            id="kairos-gmail-poll",
+            schedule=Schedule(
+                action=ScheduleActionStartWorkflow(
+                    workflow=GmailPollWorkflow.run,
+                    id="gmail-poll-cycle",
+                    task_queue=settings.TEMPORAL_TASK_QUEUE,
+                    retry_policy=RetryPolicy(maximum_attempts=2),
+                ),
+                spec=ScheduleSpec(
+                    intervals=[ScheduleIntervalSpec(every=_td(minutes=15))],
+                ),
+            ),
+        )
+    except ScheduleAlreadyRunningError:
+        # Schedule IDs are unique; an existing one means "reconnect",
+        # which is fine — the action and interval are unchanged.
+        return {"status": "scheduled", "interval_minutes": 15, "note": "existing schedule kept"}
+    except Exception as e:
+        from app.core.redaction import redact_error
+        from fastapi import HTTPException, status as _status
+
+        raise HTTPException(
+            status_code=_status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"Could not create poll schedule: {redact_error(e)}",
+        )
+
+    return {"status": "scheduled", "interval_minutes": 15}

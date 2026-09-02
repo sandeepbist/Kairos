@@ -4,10 +4,8 @@ import pytest
 from app.config import settings
 from app.pipelines.chunking import (
     chunk_transcript,
-    estimate_tokens,
     merge_extracted_chunks,
 )
-from app.pipelines.extract import deterministic_fallback_extractor
 
 
 def _transcript(speakers_minutes: int) -> str:
@@ -53,7 +51,6 @@ def test_all_speaker_turns_reachable_after_chunking():
 def test_crumb_merging():
     # A tiny trailing block merges into the previous chunk
     big = "Sarah: " + ("work content here " * 200)
-    crumb = "Alex: tiny note"
     text = big + "\nAlex: tiny note"
     chunks = chunk_transcript(text, 300)
     assert len(chunks) >= 1
