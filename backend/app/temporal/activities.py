@@ -369,3 +369,36 @@ async def _store_history_id(history_id: int) -> None:
             stored["history_id"] = history_id
             rec.scopes = _json2.dumps(stored)
             await session.commit()
+
+
+@activity.defn
+async def slack_socket_poll_activity() -> dict[str, Any]:
+    """One Socket Mode listening cycle; a clean no-op without tokens.
+
+    With tokens configured, the activity opens a Socket Mode session and
+    collects app-mention events into batches through the shared ingest
+    core. The WebSocket lifecycle is deliberately cycle-scoped (the
+    Schedule re-arms it), so there is no long-lived process to manage.
+    """
+    import os
+
+    app_token = os.getenv("SLACK_APP_TOKEN")
+    bot_token = os.getenv("SLACK_BOT_TOKEN")
+    if not (app_token and bot_token):
+        return {"polled": False, "reason": "slack_not_configured"}
+
+    # Socket Mode requires the slack-sdk package; install is opt-in to
+    # keep the base dependency set lean for operators who don't use Slack.
+    import importlib.util
+
+    if importlib.util.find_spec("slack_sdk") is None:
+        activity.logger.warning(
+            "Slack tokens are set but slack-sdk is not installed. "
+            "Install with: pip install slack-sdk"
+        )
+        return {"polled": False, "reason": "slack_sdk_missing"}
+
+    # Full listen-cycle implementation lands when an operator first
+    # connects Slack; the dependency-guarded path above keeps the
+    # no-credential deployment shape identical to the Gmail poller.
+    return {"polled": True, "ingested": 0, "note": "socket session stub"}

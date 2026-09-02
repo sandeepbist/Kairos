@@ -1,8 +1,8 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
-  "name": "com.kairos/task-ledger",
+  "name": "com.kairos/kairos",
   "title": "Kairos Task Ledger MCP Server",
-  "description": "A Postgres-backed task ledger MCP server: create, list, complete, and delete tasks. Runs self-hosted as part of the Kairos ambient action engine or standalone as a durable fallback destination for action items that map to no external tool.",
+  "description": "The Kairos ambient action engine as MCP tools: submit transcripts, retrieve extracted action items with verbatim source quotes, and approve them for execution into Notion, Jira, Calendar, Linear, Todoist, email drafts, or the built-in Task Ledger. Plus the Postgres-backed Task Ledger MCP server as a standalone durable task destination.",
   "version": "1.0.0",
   "websiteUrl": "https://github.com/sandeepbist/Kairos",
   "repository": {

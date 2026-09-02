@@ -119,6 +119,12 @@ transport to the vendors' GA remote servers; static API keys keep using
 REST, and any transport failure falls through to REST automatically —
 approved actions run on the best path the credential supports.
 
+It also runs the other direction: Kairos itself is an MCP server
+(`python -m app.mcp.servers.kairos` over stdio) exposing submit_transcript,
+list_pending_items, and approve_items — point Claude Desktop or Cursor at
+it and the approval workbench is a tool call away, with the same operator
+key gate and workflow validation the dashboard uses.
+
 ## Features
 
 <table>
@@ -253,7 +259,7 @@ rather than run wide open.
 ./scripts/test.sh
 ```
 
-**87 tests** run against live PostgreSQL and Temporal:
+**102 tests** run against live PostgreSQL and Temporal:
 
 | Suite | Covers |
 |:---|:---|

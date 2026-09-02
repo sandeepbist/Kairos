@@ -239,3 +239,26 @@ async def test_slack_export_endpoint_e2e():
             await worker_task
         except asyncio.CancelledError:
             pass
+
+
+@pytest.mark.asyncio
+async def test_slack_poll_noop_without_tokens():
+    """The Slack Socket Mode activity exits cleanly when unconfigured."""
+    import os
+
+    from app.temporal.activities import slack_socket_poll_activity
+
+    os.environ.pop("SLACK_APP_TOKEN", None)
+    os.environ.pop("SLACK_BOT_TOKEN", None)
+    result = await slack_socket_poll_activity()
+    assert result == {"polled": False, "reason": "slack_not_configured"}
+
+
+def test_slack_workflow_registered():
+    """The Slack ingest workflow is part of the worker's registry."""
+    from app.temporal.worker import create_worker
+
+    import inspect
+
+    src = inspect.getsource(create_worker)
+    assert "SlackIngestWorkflow" in src

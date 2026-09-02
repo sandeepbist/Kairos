@@ -370,7 +370,6 @@ async def test_mcp_transport_noop_without_endpoint_or_token():
 async def test_mcp_transport_unreachable_falls_back_cleanly():
     """A live connection failure to the remote server returns None —
     the REST connector path must remain fully usable."""
-    from unittest.mock import patch
     from app.mcp.connectors.mcp_transport import execute_via_mcp, MCP_REMOTE_ENDPOINTS
 
     MCP_REMOTE_ENDPOINTS["notion"] = "https://mcp.notion.invalid/mcp"
