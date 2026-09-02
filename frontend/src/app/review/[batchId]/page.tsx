@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState, use } from "react";
+import React, { useEffect, useRef, useState, use } from "react";
 import { useRouter } from "next/navigation";
 import { getBatch, approveBatch } from "@/lib/api";
 import { errorMessage } from "@/lib/errors";
@@ -23,47 +23,78 @@ export default function ReviewPage({
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [progress, setProgress] = useState<string | null>(null);
 
-  useEffect(() => {
-    const fetchStatus = async () => {
-      try {
-        const data = await getBatch(batchId);
-        setBatch(data);
-        if (data.status === "awaiting_approval" || data.status === "completed") {
-          setLoading(false);
-          setDecisions((prev) => {
-            if (Object.keys(prev).length === 0 && data.items.length > 0) {
-              const initialMap: Record<string, ActionItemDecision> = {};
-              data.items.forEach((item) => {
-                initialMap[item.id] = {
-                  item_id: item.id,
-                  action: "APPROVE",
-                  override_tool: item.suggested_tool,
-                  modified_payload: item.tool_payload,
-                };
-              });
-              return initialMap;
-            }
-            return prev;
-          });
-        }
-      } catch (err) {
-        setError(errorMessage(err, "Failed to load batch review"));
+  const fetchStatusRef = useRef<() => void>(() => {});
+
+  const fetchStatus = async () => {
+    try {
+      const data = await getBatch(batchId);
+      setBatch(data);
+      if (data.status === "awaiting_approval" || data.status === "completed") {
         setLoading(false);
+        setDecisions((prev) => {
+          if (Object.keys(prev).length === 0 && data.items.length > 0) {
+            const initialMap: Record<string, ActionItemDecision> = {};
+            data.items.forEach((item) => {
+              initialMap[item.id] = {
+                item_id: item.id,
+                action: "APPROVE",
+                override_tool: item.suggested_tool,
+                modified_payload: item.tool_payload,
+              };
+            });
+            return initialMap;
+          }
+          return prev;
+        });
       }
-    };
+    } catch (err) {
+      setError(errorMessage(err, "Failed to load batch review"));
+      setLoading(false);
+    }
+  };
 
-    fetchStatus();
+  // Poll batch status until awaiting_approval (SSE augments this; polling
+  // remains the always-available fallback).
+  useEffect(() => {
+    fetchStatusRef.current = fetchStatus;
+    const initialFetch = setTimeout(fetchStatus, 0);
     const interval: ReturnType<typeof setInterval> = setInterval(() => {
       setBatch((curr) => {
         if (!curr || curr.status === "processing" || curr.status === "executing") {
-          fetchStatus();
+          fetchStatusRef.current();
         }
         return curr;
       });
     }, 1500);
 
-    return () => clearInterval(interval);
+    return () => {
+      clearTimeout(initialFetch);
+      clearInterval(interval);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [batchId]);
+
+  // Live progress via SSE while the batch is processing (falls back to
+  // polling silently if the stream is unavailable).
+  useEffect(() => {
+    if (!batchId) return;
+    const source = new EventSource(`/api/batches/${batchId}/events`);
+    source.onmessage = (msg) => {
+      try {
+        const event = JSON.parse(msg.data) as { type: string; message: string };
+        setProgress(event.message || event.type);
+        if (event.type === "awaiting_review") {
+          fetchStatusRef.current();
+        }
+      } catch {
+        // malformed event: ignore, polling covers us
+      }
+    };
+    source.onerror = () => source.close();
+    return () => source.close();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [batchId]);
 
   const handleDecisionChange = (decision: ActionItemDecision) => {
@@ -137,7 +168,7 @@ export default function ReviewPage({
           <div>
             <p className="h-title">Extracting actions</p>
             <p className="dim" style={{ fontSize: "0.84rem", marginTop: "2px" }}>
-              Identifying commitments, speakers, and routing targets.
+              {progress ?? "Identifying commitments, speakers, and routing targets."}
             </p>
           </div>
         </div>

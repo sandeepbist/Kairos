@@ -24,12 +24,41 @@ class ProcessBatchWorkflow:
     def __init__(self):
         self._approval_received: bool = False
         self._decisions: list[dict[str, Any]] = []
+        self._extracted_item_ids: set[str] = set()
+        self._already_accepted: bool = False
 
-    @workflow.signal
-    def ApprovalReceived(self, decisions: list[dict[str, Any]]) -> None:
-        """Signal received when human completes item review."""
+    @workflow.update
+    def ApprovalReceived(self, decisions: list[dict[str, Any]]) -> dict[str, Any]:
+        """Update received when the operator completes item review.
+
+        An update (rather than a raw signal) gives the caller synchronous
+        acceptance or rejection: the validator below runs BEFORE the
+        decision enters workflow history, so a stale or forged approval
+        is refused by the platform, not merely skipped in workflow code.
+        """
         self._decisions = decisions
         self._approval_received = True
+        return {"accepted": True, "decisions": len(decisions)}
+
+    @ApprovalReceived.validator
+    def ApprovalReceivedValidator(self, decisions: list[dict[str, Any]]) -> None:
+        """Rejects approval payloads referencing items outside the batch.
+
+        Runs before ApprovalReceived is recorded in history. Duplicate
+        submissions are also rejected — an approval is a one-shot,
+        guarded by workflow determinism.
+        """
+        if self._already_accepted:
+            raise ValueError("Approval already accepted for this batch")
+        unknown = [
+            d.get("item_id") for d in decisions
+            if d.get("item_id") not in self._extracted_item_ids
+        ]
+        if unknown:
+            raise ValueError(
+                f"Decision payload rejected: {len(unknown)} item id(s) "
+                "do not belong to this batch."
+            )
 
     @workflow.run
     async def run(
@@ -51,6 +80,8 @@ class ProcessBatchWorkflow:
 
         routed_items = extraction_result.get("routed_items", [])
         token_count = extraction_result.get("token_count", 0)
+        # Known item ids gate approval updates (see ApprovalReceived validator)
+        self._extracted_item_ids = {i.get("id") for i in routed_items}
 
         # 2. Activity: Persist Extracted Candidates to PostgreSQL
         await workflow.execute_activity(
@@ -60,12 +91,15 @@ class ProcessBatchWorkflow:
             retry_policy=RetryPolicy(maximum_attempts=3),
         )
 
-        # 3. Durable Wait: Human-in-the-Loop Signal with 7-Day Expiration Timeout
+        # 3. Durable Wait: Human-in-the-Loop Update with 7-Day Expiry.
+        # Approval arrives via ApprovalReceived (an update with a
+        # validator); unknown-item payloads are rejected before history.
         try:
             await workflow.wait_condition(
                 lambda: self._approval_received,
                 timeout=timedelta(days=7),
             )
+            self._already_accepted = True
         except TimeoutError:
             workflow.logger.warning(f"Batch {batch_id} timed out waiting for approval. Auto-archiving.")
             await workflow.execute_activity(

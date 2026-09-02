@@ -54,6 +54,12 @@ async def persist_extracted_items_activity(
             )
         batch.status = "awaiting_approval"
         batch.token_count = token_count
+        from app.pipelines.events import record_event
+
+        await record_event(
+            batch_id, "awaiting_review",
+            f"{len(routed_items)} items ready for review",
+        )
 
         # Insert items
         for item in routed_items:

@@ -143,6 +143,24 @@ class TaskLedgerModel(Base):
     updated_at = Column(DateTime(timezone=True), default=utc_now, onupdate=utc_now, nullable=False)
 
 
+class BatchEventModel(Base):
+    """Progress events for a batch, streamed to the review UI over SSE.
+
+    Written at pipeline milestones (ingested, chunk k/N extracted,
+    routed, persisted, awaiting review); the SSE endpoint tails rows
+    in creation order. Durable by construction — events live in
+    Postgres, so a refresh replays them.
+    """
+    __tablename__ = "batch_events"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    batch_id = Column(String(36), ForeignKey("batches.id", ondelete="CASCADE"), nullable=False, index=True)
+    event_type = Column(String(50), nullable=False)  # stage name
+    message = Column(Text, nullable=False, default="")
+    seq = Column(Integer, nullable=False, default=0)  # monotonic per batch
+    created_at = Column(DateTime(timezone=True), default=utc_now, nullable=False)
+
+
 class OAuthTokenModel(Base):
     """OAuth tokens table: stores encrypted credentials for external MCP servers."""
     __tablename__ = "oauth_tokens"

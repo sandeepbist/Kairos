@@ -49,8 +49,9 @@ async def ingest_batch(
             id=workflow_id,
             task_queue=settings.TEMPORAL_TASK_QUEUE,
         )
-    except Exception as e:
-        # If Temporal server is unreachable, log warning and set batch to failed
+    except Exception:
+        # If Temporal server is unreachable, mark the batch failed; the
+        # response detail stays generic by design.
         batch.status = "failed"
         await db.commit()
         raise HTTPException(
@@ -149,16 +150,30 @@ async def approve_batch_items(
             detail="Batch does not have an active Temporal workflow attached.",
         )
 
-    # 1. Send signal to Temporal Workflow
+    # 1. Submit the approval as a workflow update: the validator runs
+    #    before the decision enters history, and acceptance/rejection is
+    #    synchronous — a forged or stale payload is refused here.
     try:
         client = await get_temporal_client()
         handle = client.get_workflow_handle(batch.temporal_workflow_id)
         decisions_payload = [d.model_dump() for d in request.decisions]
-        await handle.signal(ProcessBatchWorkflow.ApprovalReceived, decisions_payload)
+        result = await handle.execute_update(
+            ProcessBatchWorkflow.ApprovalReceived,
+            decisions_payload,
+        )
+        if not (result or {}).get("accepted", False):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="The workflow rejected this approval payload.",
+            )
+    except HTTPException:
+        raise
     except Exception as e:
+        from app.core.redaction import redact_error
+
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to signal Temporal workflow: {str(e)}",
+            detail=f"Failed to submit approval to workflow: {redact_error(e)}",
         )
 
     # 2. Update Batch Status in DB
@@ -171,3 +186,40 @@ async def approve_batch_items(
         "decisions_received": len(request.decisions),
         "message": "Approval decisions sent to execution engine.",
     }
+
+
+@router.get("/{batch_id}/events")
+async def stream_batch_events(batch_id: str, db: AsyncSession = Depends(get_db)):
+    """Server-sent events stream of batch progress (extraction chunks,
+    review-ready, execution) for the review screen.
+
+    Plain StreamingResponse rather than an SSE library: one event
+    format, no dependency. The generator ends when the batch reaches a
+    terminal state or the client disconnects.
+    """
+    import json as _json
+
+    from fastapi.responses import StreamingResponse
+    from app.pipelines.events import stream_events
+    from app.db.models import BatchModel
+
+    result = await db.execute(select(BatchModel).where(BatchModel.id == batch_id))
+    if not result.scalar_one_or_none():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Batch with ID '{batch_id}' not found.",
+        )
+
+    async def sse():
+        yield "retry: 2000\n\n"
+        async for event in stream_events(batch_id):
+            yield f"data: {_json.dumps(event)}\n\n"
+
+    return StreamingResponse(
+        sse(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",  # disable proxy buffering
+        },
+    )

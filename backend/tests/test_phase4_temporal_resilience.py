@@ -122,8 +122,10 @@ async def test_temporal_process_batch_workflow_end_to_end():
                     "rejection_reason": "Already documented in confluence",
                 })
 
-        # Send Temporal Signal
-        await handle.signal(ProcessBatchWorkflow.ApprovalReceived, decisions)
+        # Submit approval as a workflow update; the validator runs first
+        await handle.execute_update(
+            ProcessBatchWorkflow.ApprovalReceived, decisions,
+        )
 
         # Wait for Workflow Completion
         result = await handle.result()
@@ -214,7 +216,9 @@ async def test_temporal_process_batch_all_rejections():
                 for item in items
             ]
 
-        await handle.signal(ProcessBatchWorkflow.ApprovalReceived, decisions)
+        await handle.execute_update(
+            ProcessBatchWorkflow.ApprovalReceived, decisions,
+        )
         result = await handle.result()
         assert result["status"] == "completed"
 
@@ -224,6 +228,99 @@ async def test_temporal_process_batch_all_rejections():
                 assert refreshed.status == "rejected"
                 assert refreshed.rejection_reason == "Not prioritized"
 
+    finally:
+        worker_task.cancel()
+        try:
+            await worker_task
+        except asyncio.CancelledError:
+            pass
+
+
+@pytest.mark.asyncio
+async def test_forged_approval_rejected_by_validator():
+    """Approval updates referencing unknown item ids are rejected by the
+    platform validator — before the decision enters workflow history —
+    and the batch keeps waiting for a legitimate approval."""
+    from temporalio.client import Client as TClient
+    from temporalio.worker import Worker as TWorker
+    from app.temporal.activities import (
+        extract_and_route_activity,
+        persist_extracted_items_activity,
+        execute_approved_item_activity,
+        reject_item_activity,
+        update_routing_memory_activity,
+        complete_batch_activity,
+        expire_batch_activity,
+    )
+
+    client = await TClient.connect(settings.TEMPORAL_HOST, namespace=settings.TEMPORAL_NAMESPACE)
+    test_queue = f"test-queue-validator-{uuid.uuid4()}"
+    worker = TWorker(
+        client,
+        task_queue=test_queue,
+        workflows=[ProcessBatchWorkflow],
+        activities=[
+            extract_and_route_activity,
+            persist_extracted_items_activity,
+            execute_approved_item_activity,
+            reject_item_activity,
+            update_routing_memory_activity,
+            complete_batch_activity,
+            expire_batch_activity,
+        ],
+    )
+    worker_task = asyncio.create_task(worker.run())
+    try:
+        batch_id = str(uuid.uuid4())
+        workflow_id = f"batch-wf-validator-{batch_id}"
+        async with async_session_factory() as session:
+            session.add(BatchModel(
+                id=batch_id,
+                raw_text="Sarah: Alex, please file a ticket for the guard test.",
+                status="processing",
+                temporal_workflow_id=workflow_id,
+            ))
+            await session.commit()
+
+        handle = await client.start_workflow(
+            ProcessBatchWorkflow.run,
+            args=[batch_id, "Sarah: Alex, please file a ticket for the guard test.", "meeting_transcript", True],
+            id=workflow_id,
+            task_queue=test_queue,
+        )
+
+        # Wait for extraction so known-item ids exist
+        for _ in range(30):
+            await asyncio.sleep(0.5)
+            async with async_session_factory() as session:
+                b = (await session.execute(select(BatchModel).where(BatchModel.id == batch_id))).scalar_one_or_none()
+                if b and b.status == "awaiting_approval":
+                    break
+
+        # Forged payload: unknown item ids — the update must throw
+        forged = [{"item_id": "not-in-batch", "action": "APPROVE"}]
+        rejected = False
+        try:
+            await handle.execute_update(ProcessBatchWorkflow.ApprovalReceived, forged)
+        except Exception:
+            rejected = True
+        assert rejected, "validator must reject unknown-item approvals"
+
+        # Batch is still awaiting a real approval
+        async with async_session_factory() as session:
+            b = (await session.execute(select(BatchModel).where(BatchModel.id == batch_id))).scalar_one()
+            assert b.status == "awaiting_approval"
+
+        # The workflow still accepts the legitimate decision afterward
+        async with async_session_factory() as session:
+            items = (await session.execute(
+                select(ActionItemModel).where(ActionItemModel.batch_id == batch_id)
+            )).scalars().all()
+        legit = [{"item_id": i.id, "action": "APPROVE"} for i in items]
+        res = await handle.execute_update(ProcessBatchWorkflow.ApprovalReceived, legit)
+        assert res["accepted"] is True
+        final = await handle.result()
+        assert final["status"] == "completed"
     finally:
         worker_task.cancel()
         try:

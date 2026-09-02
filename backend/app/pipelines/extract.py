@@ -509,6 +509,8 @@ async def extract_node(state: AgentState) -> dict[str, Any]:
                 total_tokens,
                 len(chunks),
             )
+            from .events import record_event
+
             per_chunk: list[list[dict[str, Any]]] = []
             for ci, chunk in enumerate(chunks):
                 chunk_items, chunk_errors = await _invoke_extraction_llm(
@@ -516,6 +518,11 @@ async def extract_node(state: AgentState) -> dict[str, Any]:
                 )
                 errors.extend(chunk_errors)
                 per_chunk.append(chunk_items)
+                await record_event(
+                    state.get("batch_id", ""),
+                    "extract_chunk",
+                    f"Segment {ci + 1}/{len(chunks)} extracted ({len(chunk_items)} items)",
+                )
                 logger.debug("Chunk %d/%d extracted (%d items).",
                              ci + 1, len(chunks), len(chunk_items))
             raw_items, dropped_dupes = merge_extracted_chunks(per_chunk, chunks)
