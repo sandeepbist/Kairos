@@ -54,7 +54,7 @@ human approves every single item.
 <tr><td align="center"><sub><b>Execution history</b> — audit trail with tool, latency, and external links</sub></td></tr>
 <tr><td><img src="docs/screenshots/history.png" alt="Kairos execution history — a list of processed batches with status badges, item counts, and links to created objects"></td></tr>
 <tr><td align="center"><sub><b>Settings</b> — execution mode switch and the encrypted credential vault</sub></td></tr>
-<tr><td><img src="docs/screenshots/settings.png" alt="Kairos settings — a sandbox and live toggle switch and credential cards for Notion, Jira, Calendar, Gemini, and OpenAI"></td></tr>
+<tr><td><img src="docs/screenshots/settings.png" alt="Kairos settings — a sandbox and live toggle switch and credential cards for Notion, Jira, Calendar, Gmail, Linear, Todoist, Gemini, and OpenAI"></td></tr>
 </table>
 
 ## What Kairos does
