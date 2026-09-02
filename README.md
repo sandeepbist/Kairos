@@ -75,7 +75,7 @@ connected tool accounts, one shared history — see
 ## How it works
 
 ```
-you paste text ─┐
+you paste text ─ or forward a notetaker export ─ or let Gmail poll in
                 ▼
         FastAPI API ── auth, rate limit
                 │ starts a workflow
@@ -84,13 +84,15 @@ you paste text ─┐
                 │
                 ├─ extract: LangGraph + LLM (or offline parser)
                 │   └─ schema-validated items with verbatim source quotes
+                │   └─ long documents: chunked map-reduce, no truncation
                 ├─ route: semantic memory adjusts tool + confidence
                 │   └─ learns from every approve / override / reject
-                ├─ wait: human review, 7-day expiry
+                ├─ wait: human review, live SSE progress, 7-day expiry
                 │   └─ operator edits payloads, approves, or dismisses
                 └─ execute: one activity per approved item
                     ├─ SHA-256 idempotency check → no duplicates on retry
-                    ├─ Jira / Notion / Calendar / Task Ledger MCP
+                    ├─ Jira / Notion / Calendar / Linear / Todoist
+                    ├─ email drafts (you review before send)
                     └─ execution log with URL, latency, status
 ```
 
@@ -152,6 +154,35 @@ only in memory for approved executions, and never echoed back.
 
 </td>
 </tr>
+<tr>
+<td width="50%" valign="top">
+
+**Ingest from your notetaker**
+
+Paste a Meetily/Granola/Otter export — front matter, timestamps, and
+summary chrome normalized automatically. Or connect Gmail and let a
+15-minute Temporal Schedule pull new threads.
+
+**Eval-guarded extraction**
+
+A 20-case golden set gates every change: prompt tweaks and extractor
+fixes must hold a 90% floor in CI. The offline extractor passes 100%.
+
+</td>
+<td width="50%" valign="top">
+
+**Long documents, whole**
+
+Hour-long meetings extract end to end: single-pass below 50k tokens,
+speaker-turn-aware map-reduce above it, cross-chunk dedup.
+
+**Seven destinations**
+
+Jira, Notion, Calendar, Linear, Todoist, email drafts you review
+before sending, and the built-in Task Ledger.
+
+</td>
+</tr>
 </table>
 
 ## Quick start
@@ -190,7 +221,8 @@ in the Settings UI is encrypted into PostgreSQL instead.
 | `CORS_ORIGINS` | **prod** | Exact allowed origins for the published frontend |
 | `TRUST_PROXY` | optional | `true` only behind a proxy that overwrites X-Forwarded-For |
 | `GOOGLE_API_KEY` / `OPENAI_API_KEY` | optional | Enables LLM extraction and semantic memory |
-| `NOTION_API_KEY`, `JIRA_*`, `GOOGLE_CALENDAR_ACCESS_TOKEN` | optional | Live tool execution |
+| `NOTION_API_KEY`, `JIRA_*`, `GOOGLE_CALENDAR_ACCESS_TOKEN`, `LINEAR_API_KEY`, `TODOIST_API_KEY` | optional | Live tool execution |
+| `GMAIL_CLIENT_ID`, `GMAIL_CLIENT_SECRET` | optional | Gmail poller and email-draft token refresh |
 | `SANDBOX_MODE` | optional | `true` simulates all executions, no side effects |
 | `LANGFUSE_*` | optional | Tracing to a Langfuse host |
 
@@ -214,7 +246,7 @@ rather than run wide open.
 ./scripts/test.sh
 ```
 
-**60 tests** run against live PostgreSQL and Temporal:
+**87 tests** run against live PostgreSQL and Temporal:
 
 | Suite | Covers |
 |:---|:---|
@@ -227,6 +259,10 @@ rather than run wide open.
 | End-to-end | Ingest → extract → approve → execute → audit, on live services |
 | Security & redaction | Auth, rate limits, CORS, payload caps, XFF spoofing, secret redaction |
 | Resilience | Connector retry transport, batch-deletion guards |
+| Long documents | Speaker-turn chunking, cross-chunk dedup, no-truncation recovery |
+| Extraction evals | 20-case golden set, floor semantics, CI threshold gate |
+| Ingestion expansion | Notetaker export normalization, Gmail poll no-op, schedule idempotency |
+| Approval integrity | Update validators reject forged decisions before history |
 
 CI runs the same suite plus frontend lint, typecheck, and build on every
 push.

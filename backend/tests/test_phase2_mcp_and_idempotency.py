@@ -333,3 +333,20 @@ async def test_email_draft_reuses_gmail_vault_alias():
 
         await session.execute(_delete(OAuthTokenModel).where(OAuthTokenModel.provider == "gmail"))
         await session.commit()
+
+
+@pytest.mark.asyncio
+async def test_action_item_schema_accepts_new_tools():
+    """Regression: ActionItem (the GET /batches response schema) must
+    accept every TargetTool — a persisted 'linear' final_tool once 500'd
+    every read of the batch because the response literal was stale."""
+    from app.schemas.action_item import ActionItem
+    from datetime import datetime, timezone
+
+    for tool in ("notion", "jira", "calendar", "task_ledger", "linear", "todoist", "email_draft"):
+        item = ActionItem(
+            id="x", batch_id="b", description="d", suggested_tool="task_ledger",
+            final_tool=tool, tool_payload={}, source_snippet="s",
+            confidence=0.9, created_at=datetime.now(timezone.utc),
+        )
+        assert item.final_tool == tool

@@ -4,7 +4,7 @@ import uuid
 from pydantic import BaseModel, ConfigDict, Field
 
 SourceType = Literal["meeting_transcript", "email_thread", "slack_conversation", "general_notes"]
-TargetTool = Literal["notion", "jira", "calendar", "task_ledger"]
+TargetTool = Literal["notion", "jira", "calendar", "task_ledger", "linear", "todoist", "email_draft"]
 ActionabilityType = Literal["task", "decision", "fyi", "calendar_event"]
 PriorityLevel = Literal["low", "medium", "high"]
 ItemStatus = Literal["pending", "approved", "rejected", "modified_approved", "executed", "failed"]
