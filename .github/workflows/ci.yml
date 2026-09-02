@@ -21,21 +21,31 @@ jobs:
           --health-interval 5s
           --health-timeout 5s
           --health-retries 10
-      temporal:
-        image: temporalio/temporal:1.8.2
-        ports: ["7234:7234"]
-        options: >-
-          --entrypoint "temporal server start-dev --ip 0.0.0.0 --port 7234 --db-filename /tmp/temporal.db"
-          --health-cmd "nc -z localhost 7234"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 10
     env:
       APP_ENV: test
       POSTGRES_HOST: localhost
       POSTGRES_PORT: "5435"
       TEMPORAL_HOST: localhost:7234
     steps:
+      # Temporal runs as a step, not a service container: Actions services
+      # cannot pass arguments to the image, and this image's entrypoint
+      # needs "server start-dev" args (the earlier --entrypoint string
+      # override made the container exit 127 before any health check).
+      - name: Start Temporal dev server
+        run: |
+          docker run -d --name temporal-ci -p 7234:7234 \
+            temporalio/temporal:1.8.2 \
+            server start-dev --ip 0.0.0.0 --port 7234 --db-filename /tmp/temporal.db
+          for i in $(seq 1 30); do
+            if nc -z localhost 7234; then
+              echo "Temporal ready"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "Temporal failed to start"
+          docker logs temporal-ci
+          exit 1
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
