@@ -93,8 +93,14 @@ async def test_prompt_injection_defense():
 
 @pytest.mark.asyncio
 async def test_length_guardrail():
-    """Verify input > 3000 tokens is safely truncated with warning flag."""
-    # Generate long transcript with 250 lines (~3600 tokens)
+    """Long inputs are flagged, and hard-bounded at MAX_INPUT_CHARS.
+
+    Extraction itself no longer truncates at the old 3k-token guard —
+    the pipeline now extracts the whole document (single-pass below
+    SINGLE_PASS_TOKENS, chunked above it), so only genuinely oversized
+    inputs (memory-bound) are cut, with a warning.
+    """
+    # ~3600 tokens: below the single-pass ceiling — no truncation expected
     long_text = "Alex: We discussed the backend infrastructure requirements in detail with the team.\n" * 250
 
     batch_id = str(uuid.uuid4())
@@ -104,9 +110,10 @@ async def test_length_guardrail():
         source_type="meeting_transcript",
     )
 
-    assert len(state["warning_flags"]) > 0
-    assert "Input exceeded" in state["warning_flags"][0]
-    assert state["token_count"] <= 3000
+    # Below the chunking threshold: no warning, full token count retained
+    assert state["token_count"] > 3000
+    from app.config import settings as cfg
+    assert state["token_count"] <= cfg.SINGLE_PASS_TOKENS
 
 
 # ---------------------------------------------------------

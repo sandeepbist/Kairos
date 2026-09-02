@@ -8,6 +8,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field
 from app.config import settings
 from .state import AgentState
+from .chunking import chunk_transcript, merge_extracted_chunks, estimate_tokens
 
 logger = logging.getLogger(__name__)
 
@@ -307,9 +308,22 @@ async def extract_node(state: AgentState) -> dict[str, Any]:
 
     gemini_key, openai_key = await _get_vault_llm_credentials()
 
-    # Test mode or no configured key: deterministic extraction, nothing leaves.
+    # Test mode or no configured key: deterministic extraction, nothing
+    # leaves the machine. Long inputs run the deterministic extractor per
+    # chunk so nothing is silently truncated at the old 3k-token guard.
     if settings.APP_ENV == "test" or not (gemini_key or openai_key):
-        items = deterministic_fallback_extractor(raw_text, source_type)
+        plain = raw_text
+        if estimate_tokens(plain) > settings.CHUNK_TOKENS:
+            chunks = chunk_transcript(plain, settings.CHUNK_TOKENS)
+            per_chunk = [deterministic_fallback_extractor(c, source_type) for c in chunks]
+            items, dropped = merge_extracted_chunks(per_chunk, chunks)
+            if dropped:
+                logger.info(
+                    "Deterministic chunked extraction merged %d duplicate items.",
+                    len(dropped),
+                )
+        else:
+            items = deterministic_fallback_extractor(plain, source_type)
         return {"extracted_items": items, "errors": errors}
 
     system_prompt = (
@@ -350,10 +364,34 @@ async def extract_node(state: AgentState) -> dict[str, Any]:
         )))
 
     try:
-        raw_items, chain_errors = await _invoke_extraction_llm(
-            cleaned_text, chain, system_prompt
-        )
-        errors.extend(chain_errors)
+        total_tokens = estimate_tokens(raw_text)
+        if total_tokens > settings.SINGLE_PASS_TOKENS:
+            # Map: extract each speaker-turn chunk through the provider
+            # chain. Reduce: merge with near-duplicate elimination.
+            chunks = chunk_transcript(raw_text, settings.CHUNK_TOKENS)
+            logger.info(
+                "Long input (%d tokens) — extracting %d chunks.",
+                total_tokens,
+                len(chunks),
+            )
+            per_chunk: list[list[dict[str, Any]]] = []
+            for ci, chunk in enumerate(chunks):
+                chunk_items, chunk_errors = await _invoke_extraction_llm(
+                    chunk, chain, system_prompt
+                )
+                errors.extend(chunk_errors)
+                per_chunk.append(chunk_items)
+                logger.debug("Chunk %d/%d extracted (%d items).",
+                             ci + 1, len(chunks), len(chunk_items))
+            raw_items, dropped_dupes = merge_extracted_chunks(per_chunk, chunks)
+            if dropped_dupes:
+                logger.info("Merged %d duplicate items across chunks.",
+                            len(dropped_dupes))
+        else:
+            raw_items, chain_errors = await _invoke_extraction_llm(
+                cleaned_text, chain, system_prompt
+            )
+            errors.extend(chain_errors)
 
         if raw_items:
             formatted_items = []

@@ -33,16 +33,19 @@ def ingest_node(state: AgentState) -> dict[str, Any]:
     cleaned = clean_text(raw_text)
     token_count = estimate_token_count(cleaned)
 
-    # 1. Length Guardrail (Section 6.11)
-    if token_count > settings.MAX_INPUT_TOKENS or len(cleaned) > settings.MAX_INPUT_CHARS:
+    # 1. Length Guardrail: hard bound for memory safety. Extraction length
+    # policy (single-pass vs chunked) lives downstream in extract_node.
+    if len(cleaned) > settings.MAX_INPUT_CHARS:
         warning_flags.append(
-            f"Input exceeded {settings.MAX_INPUT_TOKENS} tokens ({token_count} estimated). "
-            f"Safely truncated to {settings.MAX_INPUT_TOKENS} tokens to preserve extraction quality."
+            f"Input exceeded {settings.MAX_INPUT_CHARS} characters and was truncated to that bound."
         )
-        # Truncate to limit
-        words = cleaned.split()[: int(settings.MAX_INPUT_TOKENS / 1.33)]
-        cleaned = " ".join(words)
-        token_count = settings.MAX_INPUT_TOKENS
+        cleaned = cleaned[: settings.MAX_INPUT_CHARS]
+        token_count = estimate_token_count(cleaned)
+    elif token_count > settings.SINGLE_PASS_TOKENS:
+        warning_flags.append(
+            f"Long input ({token_count} estimated tokens) — extracting in "
+            f"{settings.CHUNK_TOKENS}-token segments."
+        )
 
     # 2. Prompt Injection XML Delimiting
     # Wrap in strict XML tags with security boundary

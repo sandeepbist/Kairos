@@ -114,8 +114,14 @@ class Settings(BaseSettings):
     DEFAULT_MODEL_NAME: str = "gemini-2.5-flash"
 
     # Ingestion & Guardrail Thresholds
-    MAX_INPUT_TOKENS: int = 3000
-    MAX_INPUT_CHARS: int = 15000
+    # Hard input bounds (schema-level, memory safety)
+    MAX_INPUT_TOKENS: int = 3000  # legacy default; effective ceiling is SINGLE_PASS_TOKENS
+    MAX_INPUT_CHARS: int = 50_000
+    # Single-pass LLM extraction ceiling: below this, one call handles the
+    # whole document; above it, extraction switches to chunked map-reduce.
+    SINGLE_PASS_TOKENS: int = 50_000
+    # Target chunk size for the map phase (preamble + output headroom).
+    CHUNK_TOKENS: int = 12_000
 
     # Langfuse Observability
     LANGFUSE_PUBLIC_KEY: str | None = None
