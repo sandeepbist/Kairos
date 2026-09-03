@@ -337,4 +337,28 @@ GOLDEN_CASES: list[dict] = [
             },
         ],
     },
+    {
+        "id": "asana-task",
+        "raw_text": "Nadia: Log the supplier audit follow-up in Asana by Friday.",
+        "source_type": "meeting_transcript",
+        "expected_items": [
+            {
+                "suggested_tool": "asana",
+                "speaker": "Nadia",
+                "description_contains": ["audit"],
+            },
+        ],
+    },
+    {
+        "id": "clickup-task",
+        "raw_text": "Omar: Put the onboarding checklist revamp on our ClickUp list.",
+        "source_type": "meeting_transcript",
+        "expected_items": [
+            {
+                "suggested_tool": "clickup",
+                "speaker": "Omar",
+                "description_contains": ["onboarding"],
+            },
+        ],
+    },
 ]

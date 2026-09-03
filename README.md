@@ -15,7 +15,7 @@ human approves every single item.
 [**Terms**](TERMS.md)
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-18181b?style=flat-square)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-121%20passing-4ade80?style=flat-square)](#testing)
+[![Tests](https://img.shields.io/badge/tests-127%20passing-4ade80?style=flat-square)](#testing)
 [![Python](https://img.shields.io/badge/python-3.11%2B-3776ab?style=flat-square&logo=python&logoColor=white)](https://www.python.org)
 [![Node](https://img.shields.io/badge/node-18%2B-5fa04e?style=flat-square&logo=nodedotjs&logoColor=white)](https://nodejs.org)
 [![FastAPI](https://img.shields.io/badge/FastAPI-009488?style=flat-square&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com)
@@ -54,7 +54,7 @@ human approves every single item.
 <tr><td align="center"><sub><b>Execution history</b> — audit trail with tool, latency, and external links</sub></td></tr>
 <tr><td><img src="docs/screenshots/history.png" alt="Kairos execution history — a list of processed batches with status badges, item counts, and links to created objects"></td></tr>
 <tr><td align="center"><sub><b>Settings</b> — execution mode switch and the encrypted credential vault</sub></td></tr>
-<tr><td><img src="docs/screenshots/settings.png" alt="Kairos settings — a sandbox and live toggle switch and credential cards for Gemini, OpenAI, Notion, Jira, Calendar, Gmail, Linear, Todoist, GitHub, Confluence, and Google Tasks"></td></tr>
+<tr><td><img src="docs/screenshots/settings.png" alt="Kairos settings — a sandbox and live toggle switch and credential cards for Gemini, OpenAI, Notion, Jira, Calendar, Gmail, Linear, Todoist, GitHub, Confluence, Google Tasks, Asana, and ClickUp"></td></tr>
 </table>
 
 ## What Kairos does
@@ -65,8 +65,9 @@ schema-validated action items. Each one arrives in a review workbench with
 its verbatim source quote, a suggested destination tool, and a confidence
 score. You edit, approve, or dismiss. Approved items execute for real: a
 Jira or Linear issue filed, a Notion page created, a calendar event
-scheduled, a task in Todoist, Google Tasks, or the built-in ledger, a
-GitHub issue, a Confluence page, or an email draft waiting for your send.
+scheduled, a task in Todoist, Google Tasks, Asana, ClickUp, or the
+built-in ledger, a GitHub issue, a Confluence page, or an email draft
+waiting for your send.
 Every decision feeds a routing memory that sharpens the next batch's
 suggestions.
 
@@ -95,6 +96,7 @@ you paste text ─ or forward a notetaker export ─ or let Gmail poll in
                     ├─ SHA-256 idempotency check → no duplicates on retry
                     ├─ Jira / Notion / Calendar / Linear / Todoist
                     ├─ GitHub issues / Confluence pages / Google Tasks
+                    ├─ Asana tasks / ClickUp tasks
                     ├─ email drafts (you review before send)
                     └─ execution log with URL, latency, status
 ```
@@ -140,10 +142,10 @@ verbatim source quote behind the proposal, so you verify rather than trust.
 
 **Real side effects**
 
-Issues in Jira, Linear, or GitHub, Notion and Confluence pages, Calendar
-events, Todoist and Google Tasks entries, email drafts, ledger rows —
-with SHA-256 idempotency so retries and replays never double-create
-anything.
+Issues in Jira, Linear, GitHub, or ClickUp, Notion and Confluence
+pages, Calendar events, Todoist, Google Tasks, and Asana entries,
+email drafts, ledger rows — with SHA-256 idempotency so retries and
+replays never double-create anything.
 
 **Durable by construction**
 
@@ -183,7 +185,7 @@ DMs flow in as batches with no public URL to expose.
 
 **Eval-guarded extraction**
 
-A 23-case golden set gates every change: prompt tweaks and extractor
+A 25-case golden set gates every change: prompt tweaks and extractor
 fixes must hold a 90% floor in CI. The offline extractor passes 100%.
 
 </td>
@@ -194,11 +196,11 @@ fixes must hold a 90% floor in CI. The offline extractor passes 100%.
 Hour-long meetings extract end to end: single-pass below 50k tokens,
 speaker-turn-aware map-reduce above it, cross-chunk dedup.
 
-**Ten destinations**
+**Twelve destinations**
 
 Jira, Notion, Calendar, Linear, Todoist, GitHub, Confluence, Google
-Tasks, email drafts you review before sending, and the built-in Task
-Ledger.
+Tasks, Asana, ClickUp, email drafts you review before sending, and
+the built-in Task Ledger.
 
 </td>
 </tr>
@@ -244,6 +246,8 @@ in the Settings UI is encrypted into PostgreSQL instead.
 | `GITHUB_API_TOKEN`, `GITHUB_TARGET_REPO` | optional | GitHub issues (fine-grained PAT with Issues: write) |
 | `ATLASSIAN_API_TOKEN`, `CONFLUENCE_SPACE_KEY` | optional | Confluence pages; the Jira credential already suffices |
 | `GOOGLE_TASKS_ACCESS_TOKEN` | optional | Google Tasks (tasks-scoped OAuth token) |
+| `ASANA_API_TOKEN` | optional | Asana tasks (personal access token) |
+| `CLICKUP_API_TOKEN`, `CLICKUP_TARGET_LIST` | optional | ClickUp tasks (personal token + default list id) |
 | `SLACK_APP_TOKEN`, `SLACK_BOT_TOKEN` | optional | Socket Mode bot; live Slack threads become batches |
 | `GMAIL_CLIENT_ID`, `GMAIL_CLIENT_SECRET` | optional | Gmail poller and email-draft token refresh |
 | `SANDBOX_MODE` | optional | `true` simulates all executions, no side effects |
@@ -269,7 +273,7 @@ rather than run wide open.
 ./scripts/test.sh
 ```
 
-**121 tests** run against live PostgreSQL and Temporal:
+**127 tests** run against live PostgreSQL and Temporal:
 
 | Suite | Covers |
 |:---|:---|
@@ -283,9 +287,9 @@ rather than run wide open.
 | Security & redaction | Auth, rate limits, CORS, payload caps, XFF spoofing, secret redaction |
 | Resilience | Connector retry transport, batch-deletion guards |
 | Long documents | Speaker-turn chunking, cross-chunk dedup, no-truncation recovery |
-| Extraction evals | 23-case golden set, floor semantics, CI threshold gate |
+| Extraction evals | 25-case golden set, floor semantics, CI threshold gate |
 | Ingestion expansion | Notetaker export normalization, Gmail poll no-op, schedule idempotency |
-| Tier-2 sinks | GitHub / Confluence / Google Tasks connectors, endpoint maps, label normalization |
+| Tier-2 sinks | GitHub / Confluence / Google Tasks / Asana / ClickUp connectors, endpoint maps, label normalization |
 | Slack Socket Mode | Listen cycle, thread grouping, speaker attribution, seen-state dedup |
 | Approval integrity | Update validators reject forged decisions before history |
 
