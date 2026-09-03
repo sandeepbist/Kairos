@@ -1,8 +1,8 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
-  "name": "com.kairos/kairos",
+  "name": "io.github.sandeepbist/kairos",
   "title": "Kairos Task Ledger MCP Server",
-  "description": "The Kairos ambient action engine as MCP tools: submit transcripts, retrieve extracted action items with verbatim source quotes, and approve them for execution into Notion, Jira, Calendar, Linear, Todoist, GitHub Issues, Confluence pages, Google Tasks, Asana, ClickUp, email drafts, or the built-in Task Ledger. Plus the Postgres-backed Task Ledger MCP server as a standalone durable task destination.",
+  "description": "Approve transcript action items into 12 tools; includes a standalone Postgres task ledger.",
   "version": "1.0.0",
   "websiteUrl": "https://github.com/sandeepbist/Kairos",
   "repository": {
@@ -11,15 +11,15 @@
   },
   "packages": [
     {
-      "registry_type": "pypi",
-      "registry_version": "1.0",
+      "registryType": "pypi",
+      "registryVersion": "1.0",
       "identifier": "kairos-task-ledger",
       "version": "1.0.0",
       "transport": {
         "type": "stdio"
       },
-      "run_time": "python",
-      "environment_variables": [
+      "runtimeHint": "uvx",
+      "environmentVariables": [
         {
           "name": "POSTGRES_HOST",
           "description": "PostgreSQL host for the ledger database",

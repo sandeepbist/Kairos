@@ -15,7 +15,7 @@ human approves every single item.
 [**Terms**](TERMS.md)
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-18181b?style=flat-square)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-127%20passing-4ade80?style=flat-square)](#testing)
+[![Tests](https://img.shields.io/badge/tests-166%20passing-4ade80?style=flat-square)](#testing)
 [![Python](https://img.shields.io/badge/python-3.11%2B-3776ab?style=flat-square&logo=python&logoColor=white)](https://www.python.org)
 [![Node](https://img.shields.io/badge/node-18%2B-5fa04e?style=flat-square&logo=nodedotjs&logoColor=white)](https://nodejs.org)
 [![FastAPI](https://img.shields.io/badge/FastAPI-009488?style=flat-square&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com)
@@ -183,6 +183,18 @@ Or connect Gmail and let a 15-minute Temporal Schedule pull new threads.
 Or install the Slack bot and let Socket Mode listen live — threads and
 DMs flow in as batches with no public URL to expose.
 
+**Outbound webhooks (Standard Webhooks)**
+
+Every decision outcome — action executed, action rejected, batch
+completed, batch expired — is signed and POSTed to any endpoint you
+register: HMAC-SHA256 over `{msg_id}.{timestamp}.{payload}` with the
+timestamp inside the signature (replay defense), secrets encrypted in
+the vault and shown once, a retry ladder with jitter over durable
+Temporal delivery, 410 auto-disable. Receivers verify with the official
+`standardwebhooks` library — one line on their side, zero glue on
+yours. n8n, Home Assistant, Node-RED, or a five-line Lambda; payloads
+carry metadata only, never transcript content.
+
 **Eval-guarded extraction**
 
 A 25-case golden set gates every change: prompt tweaks and extractor
@@ -249,6 +261,8 @@ in the Settings UI is encrypted into PostgreSQL instead.
 | `ASANA_API_TOKEN` | optional | Asana tasks (personal access token) |
 | `CLICKUP_API_TOKEN`, `CLICKUP_TARGET_LIST` | optional | ClickUp tasks (personal token + default list id) |
 | `SLACK_APP_TOKEN`, `SLACK_BOT_TOKEN` | optional | Socket Mode bot; live Slack threads become batches |
+| `ENCRYPTION_KEY_PREVIOUS` | optional | Old vault key during zero-downtime rotation |
+| `WEBHOOK_ALLOW_PRIVATE_URLS` | optional | `true` lets webhooks target LAN receivers (link-local stays blocked) |
 | `GMAIL_CLIENT_ID`, `GMAIL_CLIENT_SECRET` | optional | Gmail poller and email-draft token refresh |
 | `SANDBOX_MODE` | optional | `true` simulates all executions, no side effects |
 | `LANGFUSE_*` | optional | Tracing to a Langfuse host |
@@ -273,7 +287,7 @@ rather than run wide open.
 ./scripts/test.sh
 ```
 
-**127 tests** run against live PostgreSQL and Temporal:
+**166 tests** run against live PostgreSQL and Temporal:
 
 | Suite | Covers |
 |:---|:---|
@@ -292,6 +306,8 @@ rather than run wide open.
 | Tier-2 sinks | GitHub / Confluence / Google Tasks / Asana / ClickUp connectors, endpoint maps, label normalization |
 | Slack Socket Mode | Listen cycle, thread grouping, speaker attribution, seen-state dedup |
 | Approval integrity | Update validators reject forged decisions before history |
+| Outbound webhooks | Standard Webhooks signing (official verifier as oracle), SSRF guards, retry ladder, 410 auto-disable, live delivery E2E |
+| Rotation & robustness | MultiFernet key rotation, pre-flight abort, worker/pool alignment, telemetry conventions |
 
 CI runs the same suite plus frontend lint, typecheck, and build on every
 push.
@@ -318,6 +334,22 @@ injects the API key server-side: browsers never hold it, and the backend is
 unreachable from outside the Docker network.
 
 </details>
+
+## Backup, restore, and key rotation
+
+`./scripts/backup.sh` writes a compressed `pg_dump` plus a paired
+`0600` key file — the dump contains Fernet-encrypted vault rows, so
+the dump and its key are worthless apart. Restore: stop the API and
+worker, `pg_restore --clean` into a fresh database, restore the paired
+key as `ENCRYPTION_KEY`, restart, then check `/connectors` shows your
+providers connected — that proves the vault decrypts.
+
+Key rotation is zero-downtime: generate a fresh Fernet key, run
+`ENCRYPTION_KEY=<old> ENCRYPTION_KEY_NEW=<new> python scripts/rotate_fernet_key.py`
+(the script pre-flights every row, aborts before any write on the
+first row it cannot decrypt, and re-encrypts in one transaction), then
+set `ENCRYPTION_KEY=<new>` with `ENCRYPTION_KEY_PREVIOUS=<old>` and
+restart. Remove `_PREVIOUS` after one verified poller cycle.
 
 ## Deployment scope
 

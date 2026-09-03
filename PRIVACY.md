@@ -68,12 +68,14 @@ deployment, this includes:
    overridden routings are also written to the `routing_feedback` table with
    a numeric embedding vector of the item description, which the Service
    uses to learn routing preferences.
-4. **Connector credentials.** OAuth tokens or API keys you save for Notion,
-   Jira (Atlassian), Google Calendar, and LLM providers (Google Gemini,
-   OpenAI) through the Settings screen. These are encrypted with AES-256
-   (Fernet, including HMAC integrity) before they are written to the
-   `oauth_tokens` table, and are decrypted only in memory when an approved
-   action executes.
+4. **Connector credentials.** OAuth tokens or API keys you save through
+   the Settings screen for any connected destination — Notion; Jira and
+   Confluence (Atlassian); Google Calendar, Gmail, and Google Tasks
+   (Google); Linear; Todoist; GitHub; Asana; ClickUp; and Slack — and
+   for LLM providers (Google Gemini, OpenAI). These are encrypted with
+   AES-256 (Fernet, including HMAC integrity) before they are written to
+   the `oauth_tokens` table, and are decrypted only in memory when an
+   approved action executes.
 5. **Contact data.** Any contact details you provide when communicating with
    the operator about the Service (for example, support email).
 
@@ -225,7 +227,8 @@ no system can be guaranteed secure.
 The Service runs entirely on infrastructure the operator chooses, in the
 region the operator chooses. Cross-border transfer occurs only through the
 sub-processors the operator configures — for example, Google, OpenAI,
-Atlassian, Notion, or Langfuse endpoints — and those providers' locations
+Atlassian, Notion, Linear, Todoist, GitHub, Asana, ClickUp, Slack, or
+Langfuse endpoints — and those providers' locations
 and transfer mechanisms apply. See the
 [Notice to European users](#notice-to-european-users) for GDPR transfer
 details.
@@ -373,7 +376,8 @@ in the UK, the Information Commissioner's Office).
 ## Transfers outside Europe
 
 Personal data is processed where the operator hosts the deployment. Where
-configured sub-processors (Google, OpenAI, Atlassian, Notion, Langfuse) are
+configured sub-processors (Google, OpenAI, Atlassian, Notion, Linear,
+Todoist, GitHub, Asana, ClickUp, Slack, Langfuse) are
 located outside Europe or make transfers to it, the operator relies on the
 provider's transfer mechanisms — adequacy decisions or Standard Contractual
 Clauses — and can supply details on request. The GDPR does not consider

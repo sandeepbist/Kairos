@@ -113,9 +113,11 @@ Terms limits your MIT License rights in the software.
 
 4. **Third-party tools and services**
 
-    1. **Connected tools.** The Service integrates with Notion, Atlassian
-       Jira, Google Calendar, and LLM providers (Google Gemini, OpenAI),
-       configured by the operator. You must hold valid accounts in good
+    1. **Connected tools.** The Service integrates with the destination
+       providers the operator configures — Notion; Atlassian (Jira,
+       Confluence); Google (Calendar, Gmail, Google Tasks); Linear;
+       Todoist; GitHub; Asana; ClickUp; Slack; and LLM providers
+       (Google Gemini, OpenAI). You must hold valid accounts in good
        standing with each provider whose tools you direct actions to.
        Provider rate limits, downtime, API changes, and terms apply; Company
        does not control them and is not responsible for them.
