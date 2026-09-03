@@ -1,5 +1,5 @@
 export type SourceType = "meeting_transcript" | "email_thread" | "slack_conversation" | "general_notes";
-export type TargetTool = "notion" | "jira" | "calendar" | "task_ledger" | "linear" | "todoist" | "email_draft" | "github" | "confluence_page" | "google_tasks";
+export type TargetTool = "notion" | "jira" | "calendar" | "task_ledger" | "linear" | "todoist" | "email_draft" | "github" | "confluence_page" | "google_tasks" | "asana" | "clickup";
 export type ActionabilityType = "task" | "calendar_event" | "decision" | "fyi";
 export type PriorityLevel = "low" | "medium" | "high";
 export type ItemStatus = "pending" | "approved" | "rejected" | "modified_approved" | "executed" | "failed";

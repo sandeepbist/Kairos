@@ -35,6 +35,8 @@
   --tool-github: #9aa4b2;
   --tool-confluence: #6fb3d9;
   --tool-gtasks: #8fbf9f;
+  --tool-asana: #e88a9a;
+  --tool-clickup: #d9c46f;
 
   /* Status */
   --ok: #4ade80;
@@ -307,6 +309,8 @@ body {
 .tag-github { color: var(--tool-github); border-color: rgba(154, 164, 178, 0.28); }
 .tag-confluence_page { color: var(--tool-confluence); border-color: rgba(111, 179, 217, 0.28); }
 .tag-google_tasks { color: var(--tool-gtasks); border-color: rgba(143, 191, 159, 0.28); }
+.tag-asana { color: var(--tool-asana); border-color: rgba(232, 138, 154, 0.28); }
+.tag-clickup { color: var(--tool-clickup); border-color: rgba(217, 196, 111, 0.28); }
 
 /* ============ Status ============ */
 

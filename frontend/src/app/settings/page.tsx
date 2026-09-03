@@ -32,6 +32,8 @@ const TOOL_CARDS: Array<{
   { tool: "github", name: "GitHub", detail: "Opens issues on a repository you name, via the REST API.", protocol: "api.github.com" },
   { tool: "confluence_page", name: "Confluence", detail: "Creates pages through Atlassian's remote MCP server. Uses the Jira credential.", protocol: "mcp.atlassian.com" },
   { tool: "google_tasks", name: "Google Tasks", detail: "Adds tasks to your task list via the Tasks API.", protocol: "tasks.googleapis.com" },
+  { tool: "asana", name: "Asana", detail: "Creates tasks in your first workspace via the Asana API v1.", protocol: "app.asana.com" },
+  { tool: "clickup", name: "ClickUp", detail: "Creates tasks on a list you name, via the ClickUp API v2.", protocol: "api.clickup.com" },
   { tool: "task_ledger", name: "Task Ledger", detail: "Built-in MCP server, backed by Postgres. Always available.", protocol: "mcp · internal" },
 ];
 
@@ -129,6 +131,8 @@ export default function SettingsPage() {
   const isGithubConnected = Boolean(status?.connectors?.github?.oauth_connected);
   const isConfluenceConnected = Boolean(status?.connectors?.confluence_page?.oauth_connected);
   const isGoogleTasksConnected = Boolean(status?.connectors?.google_tasks?.oauth_connected);
+  const isAsanaConnected = Boolean(status?.connectors?.asana?.oauth_connected);
+  const isClickUpConnected = Boolean(status?.connectors?.clickup?.oauth_connected);
 
   const credentialCards: CredentialConfig[] = [
     {
@@ -221,6 +225,24 @@ export default function SettingsPage() {
       hint: "OAuth token with the tasks scope. A Google Calendar token with a bundled grant also works.",
       placeholder: "OAuth access token (tasks scope)",
       connectedKey: () => isGoogleTasksConnected,
+    },
+    {
+      provider: "asana",
+      label: "Asana",
+      hint: "Personal access token from the Asana developer console. Tasks land in your first workspace by default.",
+      linkLabel: "app.asana.com/0/my-apps",
+      linkUrl: "https://app.asana.com/0/my-apps",
+      placeholder: "Asana PAT",
+      connectedKey: () => isAsanaConnected,
+    },
+    {
+      provider: "clickup",
+      label: "ClickUp",
+      hint: "Personal token from ClickUp settings (Apps). Default target list via CLICKUP_TARGET_LIST, or per action.",
+      linkLabel: "ClickUp settings — Apps",
+      linkUrl: "https://app.clickup.com/settings/apps",
+      placeholder: "ClickUp token (pk_…)",
+      connectedKey: () => isClickUpConnected,
     },
   ];
 

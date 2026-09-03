@@ -23,6 +23,8 @@ const TOOL_NAMES: Record<TargetTool, string> = {
   github: "GitHub",
   confluence_page: "Confluence",
   google_tasks: "G Tasks",
+  asana: "Asana",
+  clickup: "ClickUp",
 };
 
 const CONFIDENCE_TIER = (c: number): "high" | "mid" | "low" =>

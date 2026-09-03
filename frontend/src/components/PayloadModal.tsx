@@ -440,6 +440,72 @@ export function PayloadModal({
             </>
           )}
 
+          {/* ASANA */}
+          {targetTool === "asana" && (
+            <>
+              <div>
+                <label className="field-label">Task name</label>
+                <input
+                  className="input"
+                  value={str("name") || str("title")}
+                  onChange={(e) => handleChange("name", e.target.value)}
+                />
+              </div>
+              <div>
+                <label className="field-label">Notes</label>
+                <textarea
+                  className="input"
+                  style={{ resize: "vertical" }}
+                  rows={3}
+                  value={str("notes")}
+                  onChange={(e) => handleChange("notes", e.target.value)}
+                />
+              </div>
+              <div>
+                <label className="field-label">Due date</label>
+                <input
+                  className="input mono"
+                  type="date"
+                  value={str("due_date")}
+                  onChange={(e) => handleChange("due_date", e.target.value)}
+                />
+              </div>
+            </>
+          )}
+
+          {/* CLICKUP */}
+          {targetTool === "clickup" && (
+            <>
+              <div>
+                <label className="field-label">List ID</label>
+                <input
+                  className="input mono"
+                  value={str("list_id")}
+                  onChange={(e) => handleChange("list_id", e.target.value)}
+                  placeholder="from the list URL in ClickUp"
+                />
+              </div>
+              <div>
+                <label className="field-label">Task name</label>
+                <input
+                  className="input"
+                  value={str("name") || str("title")}
+                  onChange={(e) => handleChange("name", e.target.value)}
+                />
+              </div>
+              <div>
+                <label className="field-label">Description</label>
+                <textarea
+                  className="input"
+                  style={{ resize: "vertical" }}
+                  rows={3}
+                  value={str("description")}
+                  onChange={(e) => handleChange("description", e.target.value)}
+                />
+              </div>
+            </>
+          )}
+
           {/* TASK LEDGER */}
           {targetTool === "task_ledger" && (
             <>
