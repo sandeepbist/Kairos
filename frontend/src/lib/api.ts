@@ -4,6 +4,9 @@ import {
   ActionItemDecision,
   HistoryBatch,
   ConnectorsStatusResponse,
+  CreateWebhookResponse,
+  WebhookDelivery,
+  WebhookEndpoint,
 } from "./types";
 
 /**
@@ -107,4 +110,56 @@ export async function deleteOAuthToken(
   provider: string
 ): Promise<{ status: string; provider: string }> {
   return request(`/api/connectors/oauth/${provider}`, { method: "DELETE" });
+}
+
+// ── Outbound webhooks (Standard Webhooks) ────────────────────────────
+
+export async function listWebhooks(): Promise<WebhookEndpoint[]> {
+  return request("/api/webhooks");
+}
+
+export async function createWebhook(
+  url: string,
+  description: string,
+  eventTypes: string[]
+): Promise<CreateWebhookResponse> {
+  return request("/api/webhooks", {
+    method: "POST",
+    body: JSON.stringify({ url, description, event_types: eventTypes }),
+  });
+}
+
+export async function updateWebhook(
+  id: string,
+  patch: { enabled?: boolean; description?: string; event_types?: string[] }
+): Promise<WebhookEndpoint> {
+  return request(`/api/webhooks/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(patch),
+  });
+}
+
+export async function rotateWebhookSecret(id: string): Promise<CreateWebhookResponse> {
+  return request(`/api/webhooks/${id}/rotate`, { method: "POST" });
+}
+
+export async function deleteWebhook(id: string): Promise<{ status: string }> {
+  return request(`/api/webhooks/${id}`, { method: "DELETE" });
+}
+
+export async function testWebhook(
+  id: string
+): Promise<{ status: string; deliveries: number }> {
+  return request(`/api/webhooks/${id}/test`, { method: "POST" });
+}
+
+export async function listWebhookDeliveries(
+  id: string,
+  limit = 20
+): Promise<{ deliveries: WebhookDelivery[] }> {
+  return request(`/api/webhooks/${id}/deliveries?limit=${limit}`);
+}
+
+export async function armWebhookDispatch(): Promise<{ status: string }> {
+  return request("/api/webhooks/arm", { method: "POST" });
 }

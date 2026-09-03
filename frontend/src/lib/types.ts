@@ -83,3 +83,26 @@ export interface ConnectorsStatusResponse {
     openai?: { connected: boolean; model: string };
   };
 }
+
+export interface WebhookEndpoint {
+  id: string;
+  url: string;
+  description: string;
+  enabled: boolean;
+  event_types: string[];
+  created_at: string | null;
+}
+
+export type CreateWebhookResponse = WebhookEndpoint & { secret: string; secret_notice: string };
+
+export interface WebhookDelivery {
+  id: string;
+  event_type: string;
+  status: "pending" | "delivered" | "failed" | "disabled";
+  attempts: number;
+  last_response_code: number | null;
+  last_error?: string | null;
+  next_retry_at?: string | null;
+  created_at: string | null;
+  delivered_at: string | null;
+}

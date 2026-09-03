@@ -34,12 +34,28 @@ const HOP_BY_HOP = new Set([
   "content-length",
 ]);
 
+// Mirror the backend's 1MB MaxBodySizeMiddleware. Next 16's proxy buffers
+// request bodies in memory (up to 10MB by default) BEFORE the backend
+// answers, so the memory cost is already paid when FastAPI rejects. The
+// proxyClientMaxBodySize flag caps the buffering but does NOT reject —
+// the hard 413 must happen here. Client-supplied Content-Length is a
+// fast-fail guard; chunked bodies still meet the backend's middleware.
+const MAX_BODY_BYTES = 1_048_576;
+
 export async function proxy(request: NextRequest) {
   const { pathname, search } = request.nextUrl;
 
   // Only the API namespace is proxied; everything else is Next's own routing.
   if (!pathname.startsWith("/api")) {
     return NextResponse.next();
+  }
+
+  const contentLength = Number(request.headers.get("content-length"));
+  if (!Number.isNaN(contentLength) && contentLength > MAX_BODY_BYTES) {
+    return NextResponse.json(
+      { detail: "Request body too large." },
+      { status: 413 }
+    );
   }
 
   const target = `${BACKEND}${pathname}${search}`;

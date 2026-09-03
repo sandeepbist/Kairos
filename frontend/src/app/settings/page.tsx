@@ -4,6 +4,7 @@ import React, { useEffect, useState } from "react";
 import { getConnectorsStatus, toggleSandbox, saveOAuthToken, deleteOAuthToken } from "@/lib/api";
 import { errorMessage } from "@/lib/errors";
 import { ConnectorsStatusResponse, TargetTool } from "@/lib/types";
+import { WebhooksPanel } from "@/components/WebhooksPanel";
 
 type Notice = { text: string; type: "success" | "error" | "info" } | null;
 
@@ -392,8 +393,14 @@ export default function SettingsPage() {
         })}
       </div>
 
+      {/* Outbound webhooks */}
+      <p className="mono-label" style={{ marginBottom: "14px", marginTop: "36px" }}>
+        WEBHOOKS — OUTBOUND EVENT FEED
+      </p>
+      <WebhooksPanel />
+
       {/* Tool ecosystem */}
-      <p className="mono-label" style={{ marginBottom: "14px" }}>
+      <p className="mono-label" style={{ marginBottom: "14px", marginTop: "36px" }}>
         TOOL ECOSYSTEM
       </p>
 
