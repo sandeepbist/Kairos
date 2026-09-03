@@ -338,7 +338,9 @@ async def test_extraction_provider_chain_fallback_and_reask():
             self.behavior = behavior
             self.calls = 0
 
-        def with_structured_output(self, _schema):
+        def with_structured_output(self, _schema, **kwargs):
+            # The production call pins method="json_schema"; the stub records it.
+            self.last_method = kwargs.get("method")
             return self
 
         async def ainvoke(self, messages):

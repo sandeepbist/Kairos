@@ -5,7 +5,7 @@ import uuid
 import logging
 from datetime import datetime, timezone, date, timedelta
 from typing import Any, Literal
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from app.config import settings
 from .state import AgentState
 from .chunking import chunk_transcript, merge_extracted_chunks, estimate_tokens
@@ -21,14 +21,42 @@ class ExtractedActionItemSchema(BaseModel):
         "email_draft", "github", "confluence_page", "google_tasks",
         "asana", "clickup",
     ] = Field(..., description="Recommended destination tool")
-    suggested_due_date: str | None = Field(default=None, description="ISO formatted due date if mentioned (e.g. 2026-09-01)")
+    suggested_due_date: str | None = Field(
+        default=None,
+        description="Due date in YYYY-MM-DD form if mentioned (e.g. 2026-09-01); null when no date is stated",
+        json_schema_extra={"format": "date"},
+    )
     suggested_assignee: str | None = Field(default=None, description="Explicit assignee or owner name")
     speaker: str | None = Field(default=None, description="Speaker name ONLY if labeled in source, null otherwise")
     actionability_type: Literal["task", "decision", "fyi", "calendar_event"] = Field(default="task", description="Actionability category")
     priority: Literal["low", "medium", "high"] = Field(default="medium", description="Priority level")
-    confidence: float = Field(default=0.85, ge=0.0, le=1.0, description="Confidence score between 0.0 and 1.0")
+    confidence: float = Field(default=0.85, description="Confidence score between 0.0 and 1.0; out-of-range values are clamped, not rejected")
     source_snippet: str = Field(..., description="Exact verbatim quote/lines from source text for verification")
     tool_payload: dict[str, Any] = Field(default_factory=dict, description="Pre-filled tool payload")
+
+    @field_validator("confidence", mode="before")
+    @classmethod
+    def _clamp_confidence(cls, v):
+        # OpenAI strict mode drops minimum/maximum from the wire schema,
+        # so the model can emit out-of-range values; clamp deterministically
+        # instead of burning a reask round-trip on trivially repairable data.
+        try:
+            return min(1.0, max(0.0, float(v)))
+        except (TypeError, ValueError):
+            return 0.5
+
+    @field_validator("suggested_due_date", mode="before")
+    @classmethod
+    def _normalize_due_date(cls, v):
+        # A format hint is advisory for a chat model; normalize full ISO
+        # timestamps to the date component and degrade prose dates to null
+        # rather than failing the whole item.
+        if not isinstance(v, str) or not v.strip():
+            return None
+        try:
+            return date.fromisoformat(v.strip()[:10]).isoformat()
+        except ValueError:
+            return None
 
 
 class ExtractedActionItemList(BaseModel):
@@ -469,32 +497,6 @@ async def _get_vault_llm_credentials() -> tuple[str | None, str | None]:
     return gemini_key, openai_key
 
 
-def _llm_providers() -> list[tuple[str, Any]]:
-    """Returns configured providers in priority order: Gemini, then OpenAI.
-
-    Each entry is (name, llm) where llm is a ready LangChain chat client
-    with structured output wired to the extraction schema.
-    """
-    providers: list[tuple[str, Any]] = []
-    if settings.GOOGLE_API_KEY:
-        from langchain_google_genai import ChatGoogleGenerativeAI
-
-        providers.append(("gemini", ChatGoogleGenerativeAI(
-            model=settings.DEFAULT_MODEL_NAME,
-            google_api_key=settings.GOOGLE_API_KEY,
-            temperature=0.1,
-        )))
-    if settings.OPENAI_API_KEY:
-        from langchain_openai import ChatOpenAI
-
-        providers.append(("openai", ChatOpenAI(
-            model="gpt-4o-mini",
-            api_key=settings.OPENAI_API_KEY,
-            temperature=0.1,
-        )))
-    return providers
-
-
 async def _invoke_extraction_llm(
     cleaned_text: str,
     providers: list[tuple[str, Any]],
@@ -511,7 +513,7 @@ async def _invoke_extraction_llm(
 
     errors: list[str] = []
     for name, llm in providers:
-        structured = llm.with_structured_output(ExtractedActionItemList)
+        structured = llm.with_structured_output(ExtractedActionItemList, method="json_schema")
         for attempt in (1, 2):  # attempt 2 = validation reask
             try:
                 messages = [
