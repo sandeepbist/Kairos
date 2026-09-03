@@ -19,6 +19,7 @@ class ExtractedActionItemSchema(BaseModel):
     suggested_tool: Literal[
         "notion", "jira", "calendar", "task_ledger", "linear", "todoist",
         "email_draft", "github", "confluence_page", "google_tasks",
+        "asana", "clickup",
     ] = Field(..., description="Recommended destination tool")
     suggested_due_date: str | None = Field(default=None, description="ISO formatted due date if mentioned (e.g. 2026-09-01)")
     suggested_assignee: str | None = Field(default=None, description="Explicit assignee or owner name")
@@ -54,6 +55,8 @@ def deterministic_fallback_extractor(
     github_keywords = ["github", "github issue", "open an issue", "file an issue on github", "track it in the repo", "in the repo"]
     confluence_keywords = ["confluence", "confluence page", "wiki page", "decision log", "meeting notes page", "write up the design doc"]
     google_tasks_keywords = ["google task", "google tasks", "add to my google tasks", "my tasks list", "tasks list"]
+    asana_keywords = ["asana", "asana task", "in asana"]
+    clickup_keywords = ["clickup", "click up task", "clickup list"]
     jira_keywords = ["bug", "ticket", "issue", "crash", "deploy", "pipeline", "auth", "refactor", "api", "endpoint", "pull request", "pr"]
     notion_keywords = ["document", "doc", "spec", "roadmap", "notes", "wiki", "guide", "rfc", "summary", "plan"]
 
@@ -62,7 +65,7 @@ def deterministic_fallback_extractor(
     speaker_pattern = re.compile(r"^([A-Za-z][A-Za-z0-9_ .'-]{0,40})?:\s*(.*)$")
     speaker_noop_pattern = re.compile(r"^\d+$")  # line numbers / timestamps
     action_keywords = [
-        "will", "can you", "please", "i'll", "let's", "need to", "should", "assign", "action item", "todo", "must", "follow up"
+        "will", "can you", "please", "i'll", "let's", "need to", "should", "assign", "action item", "todo", "must", "follow up", "log", "put", "track", "add"
     ]
 
     for line in lines:
@@ -181,6 +184,10 @@ def deterministic_fallback_extractor(
                 explicit_tool = "confluence_page"
             elif re.search(r"\b(?:my\s+)?google\s+tasks?\b", content_lower):
                 explicit_tool = "google_tasks"
+            elif re.search(r"\b(?:in|to|on)\s+asana\b", content_lower):
+                explicit_tool = "asana"
+            elif re.search(r"\b(?:in|to|on)\s+clickup\b|\bclickup\s+(?:task|list)\b", content_lower):
+                explicit_tool = "clickup"
             actionability_type = "task"
             confidence = 0.82
             priority = "medium"
@@ -207,6 +214,14 @@ def deterministic_fallback_extractor(
                 confidence = 0.87
             elif any(k in content_lower for k in google_tasks_keywords):
                 suggested_tool = "google_tasks"
+                actionability_type = "task"
+                confidence = 0.86
+            elif any(k in content_lower for k in asana_keywords):
+                suggested_tool = "asana"
+                actionability_type = "task"
+                confidence = 0.86
+            elif any(k in content_lower for k in clickup_keywords):
+                suggested_tool = "clickup"
                 actionability_type = "task"
                 confidence = 0.86
             elif any(k in content_lower for k in todoist_keywords):
@@ -260,6 +275,18 @@ def deterministic_fallback_extractor(
                     "title": content[:200],
                     "notes": f"Captured from: {line}",
                     "due_date": (date.today() + timedelta(days=3)).isoformat(),
+                }
+            elif suggested_tool == "asana":
+                tool_payload = {
+                    "name": content[:200],
+                    "notes": f"Captured from: {line}",
+                    "due_date": (date.today() + timedelta(days=3)).isoformat(),
+                }
+            elif suggested_tool == "clickup":
+                tool_payload = {
+                    "name": content[:200],
+                    "description": f"Captured from: {line}",
+                    "list_id": os.getenv("CLICKUP_TARGET_LIST", ""),
                 }
             elif suggested_tool == "todoist":
                 tool_payload = {
@@ -556,12 +583,13 @@ async def extract_node(state: AgentState) -> dict[str, Any]:
         "For each item, output:\n"
         "- description: clear task or meeting description (e.g. 'Project review meeting on August 29 at 5:00 PM')\n"
         "- suggested_tool: one of notion, jira, calendar, task_ledger, linear, todoist, "
-        "email_draft, github, confluence_page, google_tasks — "
+        "email_draft, github, confluence_page, google_tasks, asana, clickup — "
         "pick the destination the speaker asked for: Jira/Linear for tracked bugs and issues, "
         "GitHub when the action belongs on a repository, "
         "Google Calendar for meetings and scheduled events, Notion for docs and specs, "
         "Confluence when the speaker names it or asks for a decision log or meeting-notes page, "
-        "Todoist or Google Tasks for personal to-dos, email_draft when someone should write an email, "
+        "Todoist, Google Tasks, Asana, or ClickUp when the speaker names their task app, "
+        "email_draft when someone should write an email, "
         "and task_ledger when no external tool is named\n"
         "- source_snippet: verbatim exact quote/line from source text\n"
         "- speaker: speaker name if labeled (e.g. 'Sarah: ...'), null otherwise\n"

@@ -85,6 +85,7 @@ async def save_oauth_token(
     valid_providers = [
         "notion", "jira", "google_calendar", "gmail", "linear", "todoist",
         "gemini", "google_ai", "openai", "github", "confluence", "google_tasks",
+        "asana", "clickup",
     ]
     if provider not in valid_providers:
         raise HTTPException(
