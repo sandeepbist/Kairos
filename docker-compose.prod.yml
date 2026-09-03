@@ -102,7 +102,10 @@ services:
       context: ./backend
     command: ["python", "-m", "app.temporal.worker"]
     working_dir: /app/backend
-    environment: *backend_env
+    environment:
+      <<: *backend_env
+      KAIROS_DB_APP_NAME: kairos-worker
+      ENCRYPTION_KEY_PREVIOUS: ${ENCRYPTION_KEY_PREVIOUS:-}
     networks: [internal]
     restart: unless-stopped
     depends_on:

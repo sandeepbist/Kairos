@@ -77,3 +77,4 @@ temporal.db*
 *.swo
 *~
 .mimosa/
+backups/

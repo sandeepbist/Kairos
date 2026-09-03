@@ -1,21 +1,27 @@
 """Security and Encryption Vault: AES-256 Fernet token encryption."""
 import base64
-from cryptography.fernet import Fernet
+from cryptography.fernet import Fernet, MultiFernet
 from app.config import settings
 
 
-def get_fernet_cipher() -> Fernet:
-    """Instantiates Fernet cipher using configured 32-byte key."""
-    raw_key = settings.ENCRYPTION_KEY.encode("utf-8")
-    # Ensure key is valid 32-byte urlsafe base64
-    try:
-        # If already 32-byte base64
-        return Fernet(raw_key)
-    except Exception:
-        # Fallback to deterministic derived 32-byte urlsafe base64 key
-        derived_32 = (raw_key.ljust(32, b"0"))[:32]
-        urlsafe_key = base64.urlsafe_b64encode(derived_32)
-        return Fernet(urlsafe_key)
+def get_fernet_cipher() -> MultiFernet:
+    """MultiFernet([current, previous]): reads decrypt with either key,
+    ALL NEW WRITES encrypt with the current key (MultiFernet semantics) —
+    the zero-downtime rotation shape. ENCRYPTION_KEY_PREVIOUS is only set
+    while a rotation is in flight."""
+    def _to_fernet(raw: str) -> Fernet:
+        key = raw.encode("utf-8")
+        try:
+            return Fernet(key)
+        except Exception:
+            # Fallback to deterministic derived 32-byte urlsafe base64 key
+            derived_32 = (key.ljust(32, b"0"))[:32]
+            return Fernet(base64.urlsafe_b64encode(derived_32))
+
+    keys = [_to_fernet(settings.ENCRYPTION_KEY)]
+    if settings.ENCRYPTION_KEY_PREVIOUS:
+        keys.append(_to_fernet(settings.ENCRYPTION_KEY_PREVIOUS))
+    return MultiFernet(keys)
 
 
 def encrypt_token(plain_token: str) -> str:

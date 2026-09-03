@@ -39,24 +39,28 @@ class TelemetryClient:
     def genai_attributes(
         operation: str,
         tool_name: str | None = None,
-        latency_ms: int = 0,
-        token_count: int = 0,
+        input_tokens: int = 0,
+        output_tokens: int = 0,
         extra: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Builds metadata keyed to the OpenTelemetry GenAI semantic
         conventions (gen_ai.*) so any OTel-compatible backend parses
         Kairos traces natively, not only Langfuse.
         Ref: open-telemetry/semantic-conventions-genai, gen-ai-spans.md.
+
+        Only real convention attributes are emitted; app-specific values
+        (latency, ids) ride as kairos.* keys instead of invented
+        gen_ai.* names.
         """
         attrs: dict[str, Any] = {"gen_ai.operation.name": operation}
         if tool_name:
             # gen_ai.tool.name + gen_ai.tool.description mark MCP/connector
             # tool dispatches per the mcp.md conventions.
             attrs["gen_ai.tool.name"] = tool_name
-        if latency_ms:
-            attrs["gen_ai.response.time_to_first_chunk"] = latency_ms
-        if token_count:
-            attrs["gen_ai.usage.token_count"] = token_count
+        if input_tokens:
+            attrs["gen_ai.usage.input_tokens"] = input_tokens
+        if output_tokens:
+            attrs["gen_ai.usage.output_tokens"] = output_tokens
         if extra:
             attrs.update(extra)
         return attrs

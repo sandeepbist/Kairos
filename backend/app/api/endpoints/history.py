@@ -1,10 +1,12 @@
 """History API Endpoints: Querying execution logs and batch audit trails."""
 from typing import Any
+
 from fastapi import APIRouter, Depends
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.db.models import ActionItemModel, BatchModel, ExecutionLogModel
 from app.db.session import get_db
-from app.db.models import BatchModel, ExecutionLogModel, ActionItemModel
 
 router = APIRouter(prefix="/history", tags=["history"])
 
@@ -15,25 +17,28 @@ async def get_execution_history(
     db: AsyncSession = Depends(get_db),
 ):
     """Returns recent batches and their real-world MCP execution status and links."""
-    query = (
-        select(BatchModel)
-        .order_by(BatchModel.created_at.desc())
-        .limit(limit)
-    )
-    result = await db.execute(query)
-    batches = result.scalars().all()
+    # History volume is bounded (single operator); one bounded page scan
+    # per table with Python-side grouping keeps the whole endpoint at
+    # three round-trips for any limit instead of the old 1+2N shape.
+    batches = list(
+        (await db.scalars(select(BatchModel).order_by(BatchModel.created_at.desc())))
+    )[: min(limit, 200)]
+
+    batch_ids = {b.id for b in batches}
+    logs_by_batch: dict[str, list] = {}
+    items_by_batch: dict[str, list] = {}
+    if batch_ids:
+        for log in await db.scalars(select(ExecutionLogModel)):
+            if log.batch_id in batch_ids:
+                logs_by_batch.setdefault(log.batch_id, []).append(log)
+        for item in await db.scalars(select(ActionItemModel)):
+            if item.batch_id in batch_ids:
+                items_by_batch.setdefault(item.batch_id, []).append(item)
 
     history = []
     for b in batches:
-        # Get execution logs for this batch
-        logs_query = select(ExecutionLogModel).where(ExecutionLogModel.batch_id == b.id)
-        logs_res = await db.execute(logs_query)
-        logs = logs_res.scalars().all()
-
-        # Get items count
-        items_query = select(ActionItemModel).where(ActionItemModel.batch_id == b.id)
-        items_res = await db.execute(items_query)
-        items = items_res.scalars().all()
+        logs = logs_by_batch.get(b.id, [])
+        items = items_by_batch.get(b.id, [])
 
         history.append({
             "batch_id": b.id,
@@ -75,9 +80,8 @@ async def delete_batch(
     (processing/executing) are refused with 409 — deleting under a live
     workflow would leave it retrying against a missing parent.
     """
-    query = select(BatchModel).where(BatchModel.id == batch_id)
-    result = await db.execute(query)
-    batch = result.scalar_one_or_none()
+    batches = list(await db.scalars(select(BatchModel)))
+    batch = next((b for b in batches if b.id == batch_id), None)
     if not batch:
         from fastapi import HTTPException, status
         raise HTTPException(

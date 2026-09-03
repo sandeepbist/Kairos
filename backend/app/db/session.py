@@ -1,5 +1,6 @@
 """Database connection, pooling, and session lifecycle management."""
 import logging
+import os
 from typing import AsyncGenerator
 
 from sqlalchemy import text
@@ -31,7 +32,10 @@ engine = create_async_engine(
     future=True,
     poolclass=NullPool if use_null_pool else AsyncAdaptedQueuePool,
     connect_args={
-        "server_settings": {"application_name": "kairos-api"},
+        # Per-process app name (pg_stat_activity attribution): the worker
+        # sets KAIROS_DB_APP_NAME before the process starts, so import
+        # order can never mislabel it.
+        "server_settings": {"application_name": os.getenv("KAIROS_DB_APP_NAME", "kairos-api")},
         # Terminate queries stuck on locks rather than hanging the pool.
         "timeout": 15,
         "command_timeout": 60,

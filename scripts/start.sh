@@ -39,7 +39,7 @@ echo "🗄️  Applying database migrations..."
 
 # 3. Start Temporal Worker in background
 echo "⚡ [2/4] Starting Temporal Durable Worker..."
-python -m app.temporal.worker &
+KAIROS_DB_APP_NAME=kairos-worker python -m app.temporal.worker &
 WORKER_PID=$!
 echo "✓ Temporal Worker running (PID $WORKER_PID)."
 

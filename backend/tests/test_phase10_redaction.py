@@ -57,12 +57,13 @@ def test_genai_semantic_attributes():
     attrs = telemetry.genai_attributes(
         operation="execute_action",
         tool_name="create_task",
-        latency_ms=95,
-        token_count=320,
-        extra={"batch_id": "b1"},
+        input_tokens=320,
+        extra={"batch_id": "b1", "kairos.tool.latency_ms": 95},
     )
     assert attrs["gen_ai.operation.name"] == "execute_action"
     assert attrs["gen_ai.tool.name"] == "create_task"
-    assert attrs["gen_ai.usage.token_count"] == 320
-    assert attrs["gen_ai.response.time_to_first_chunk"] == 95
+    assert attrs["gen_ai.usage.input_tokens"] == 320
+    # No invented convention attributes — app values ride kairos.* keys.
+    assert "gen_ai.usage.token_count" not in attrs
+    assert "gen_ai.response.time_to_first_chunk" not in attrs
     assert attrs["batch_id"] == "b1"
