@@ -346,6 +346,7 @@ async def test_action_item_schema_accepts_new_tools():
     for tool in (
         "notion", "jira", "calendar", "task_ledger", "linear", "todoist",
         "email_draft", "github", "confluence_page", "google_tasks",
+        "asana", "clickup",
     ):
         item = ActionItem(
             id="x", batch_id="b", description="d", suggested_tool="task_ledger",

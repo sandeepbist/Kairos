@@ -20,6 +20,8 @@ from .connectors import (
     GitHubConnector,
     ConfluenceConnector,
     GoogleTasksConnector,
+    AsanaConnector,
+    ClickUpConnector,
 )
 
 
@@ -38,6 +40,8 @@ class McpClientManager:
             "github": GitHubConnector(),
             "confluence_page": ConfluenceConnector(),
             "google_tasks": GoogleTasksConnector(),
+            "asana": AsanaConnector(),
+            "clickup": ClickUpConnector(),
         }
 
     def get_connector(self, tool_name: str) -> BaseConnector:

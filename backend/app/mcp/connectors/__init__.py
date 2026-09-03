@@ -10,6 +10,8 @@ from .email_draft_connector import EmailDraftConnector
 from .github_connector import GitHubConnector
 from .confluence_connector import ConfluenceConnector
 from .google_tasks_connector import GoogleTasksConnector
+from .asana_connector import AsanaConnector
+from .clickup_connector import ClickUpConnector
 
 __all__ = [
     "BaseConnector",
@@ -24,4 +26,6 @@ __all__ = [
     "GitHubConnector",
     "ConfluenceConnector",
     "GoogleTasksConnector",
+    "AsanaConnector",
+    "ClickUpConnector",
 ]

@@ -7,6 +7,7 @@ SourceType = Literal["meeting_transcript", "email_thread", "slack_conversation",
 TargetTool = Literal[
     "notion", "jira", "calendar", "task_ledger", "linear", "todoist",
     "email_draft", "github", "confluence_page", "google_tasks",
+    "asana", "clickup",
 ]
 ActionabilityType = Literal["task", "decision", "fyi", "calendar_event"]
 PriorityLevel = Literal["low", "medium", "high"]
