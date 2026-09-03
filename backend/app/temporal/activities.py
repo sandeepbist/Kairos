@@ -1,12 +1,20 @@
 """Temporal Activities for Kairos Batch Processing Pipeline."""
 import base64
+import uuid
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from temporalio import activity
 from temporalio.exceptions import ApplicationError
 from sqlalchemy import select
 from app.db.session import async_session_factory
-from app.db.models import BatchModel, ActionItemModel, OAuthTokenModel
+from app.db.models import (
+    ActionItemModel,
+    BatchModel,
+    OAuthTokenModel,
+    WebhookDeliveryModel,
+    WebhookEndpointModel,
+)
 from app.pipelines.graph import run_extraction_pipeline
 from app.pipelines.memory import routing_memory
 from app.mcp.client_manager import mcp_client_manager
@@ -569,3 +577,201 @@ async def _store_slack_seen_state(seen: set[str]) -> None:
         stored["seen_messages"] = sorted(seen)[-2000:]
         rec.scopes = _json2.dumps(stored)
         await session.commit()
+
+
+# Spec retry schedule (seconds): Immediately→5s→5m→30m→2h→5h→10h→14h→20h→24h.
+_WEBHOOK_RETRY_DELAYS: tuple[int, ...] = (
+    5, 300, 1800, 7200, 18000, 36000, 50400, 72000, 86400,
+)
+_WEBHOOK_MAX_ATTEMPTS = 10  # 1 immediate + 9 scheduled retries
+
+
+@activity.defn
+async def emit_webhook_event_activity(
+    event_type: str,
+    data: dict[str, Any],
+    target_endpoint_id: str | None = None,
+) -> dict[str, Any]:
+    """Fans one event out to every enabled endpoint subscribed to it.
+
+    Creates one pending webhook_deliveries row per endpoint (msg_id minted
+    here so it is stable across retries — the spec dedup requirement); the
+    dispatch Schedule's scan activity performs the actual POSTs. Webhook
+    fan-out must never fail the core pipeline, so every error is logged,
+    redacted, and swallowed.
+    """
+    from app.core.redaction import redact_error
+    from app.webhooks import WEBHOOK_EVENT_TYPES, build_envelope
+
+    if event_type not in WEBHOOK_EVENT_TYPES:
+        activity.logger.warning("Webhook event %r not in allowlist; skipped.", event_type)
+        return {"event_type": event_type, "deliveries": 0, "reason": "unknown_event_type"}
+
+    envelope = build_envelope(event_type, data)
+    created = 0
+    try:
+        from app.webhooks import generate_msg_id
+
+        async with async_session_factory() as session:
+            rows = await session.scalars(select(WebhookEndpointModel))
+            endpoints = list(rows)
+            targets = [
+                e for e in endpoints
+                if e.enabled
+                and (target_endpoint_id is None or e.id == target_endpoint_id)
+                and (
+                    target_endpoint_id is not None
+                    or "*" in (e.event_types or [])
+                    or event_type in (e.event_types or [])
+                )
+            ]
+            for endpoint in targets:
+                session.add(WebhookDeliveryModel(
+                    id=str(uuid.uuid4()),
+                    endpoint_id=endpoint.id,
+                    msg_id=generate_msg_id(),
+                    event_type=event_type,
+                    payload=envelope,
+                    status="pending",
+                    attempts=0,
+                    next_retry_at=datetime.now(timezone.utc),
+                ))
+                created += 1
+            await session.commit()
+    except Exception as e:  # noqa: BLE001 — webhooks never fail the pipeline
+        activity.logger.warning(
+            "Webhook emit for %s failed: %s", event_type, redact_error(e)
+        )
+        return {"event_type": event_type, "deliveries": 0, "reason": redact_error(e)}
+    return {"event_type": event_type, "deliveries": created}
+
+
+@activity.defn
+async def dispatch_webhooks_activity() -> dict[str, Any]:
+    """One dispatch scan: POSTs every pending delivery whose retry time has
+    come (bounded at 50 per tick — operator scale; the next tick catches
+    up). The delivery client never follows redirects, and the URL is
+    re-validated immediately before the POST (DNS can change after
+    registration). Outcomes: 2xx → delivered; 410 → endpoint disabled;
+    anything else → scheduled retry with jitter until the attempt budget
+    is exhausted.
+    """
+    import json as _json
+    import random
+
+    import httpx
+
+    from app.config import settings as _settings
+    from app.core.redaction import redact_error
+    from app.core.security import decrypt_token
+    from app.webhooks import (
+        WebhookUrlError,
+        build_delivery_headers,
+        validate_webhook_url,
+    )
+
+    delivered = failed = disabled = retried = 0
+    async with async_session_factory() as session:
+        rows = await session.scalars(
+            select(WebhookDeliveryModel)
+            .where(
+                WebhookDeliveryModel.status == "pending",
+                WebhookDeliveryModel.next_retry_at <= datetime.now(timezone.utc),
+            )
+            .order_by(WebhookDeliveryModel.created_at)
+            .limit(50)
+        )
+        deliveries = list(rows)
+        if not deliveries:
+            return {"scanned": 0}
+
+        endpoint_ids = {d.endpoint_id for d in deliveries}
+        ep_rows = await session.scalars(select(WebhookEndpointModel))
+        endpoints = {e.id: e for e in ep_rows if e.id in endpoint_ids}
+
+        async with httpx.AsyncClient(
+            timeout=_settings.WEBHOOK_TIMEOUT_SECONDS, follow_redirects=False,
+        ) as client:
+            for delivery in deliveries:
+                endpoint = endpoints.get(delivery.endpoint_id)
+                if not endpoint or not endpoint.enabled:
+                    delivery.status = "disabled" if not endpoint else delivery.status
+                    continue
+
+                # Serialize once; sign and POST the exact same bytes.
+                body = _json.dumps(
+                    delivery.payload, separators=(",", ":"), sort_keys=True
+                ).encode("utf-8")
+
+                try:
+                    validate_webhook_url(
+                        endpoint.url, allow_private=_settings.WEBHOOK_ALLOW_PRIVATE_URLS
+                    )
+                    secrets_value = decrypt_token(endpoint.secret_enc)
+                    if (
+                        endpoint.previous_secret_enc
+                        and endpoint.rotated_at
+                        and datetime.now(timezone.utc) - endpoint.rotated_at
+                        < timedelta(hours=24)
+                    ):
+                        secrets_value += " " + decrypt_token(endpoint.previous_secret_enc)
+
+                    ts = int(datetime.now(timezone.utc).timestamp())
+                    headers = build_delivery_headers(secrets_value, delivery.msg_id, ts, body)
+                    resp = await client.post(endpoint.url, content=body, headers=headers)
+                    delivery.last_response_code = resp.status_code
+                    delivery.attempts += 1
+
+                    if 200 <= resp.status_code < 300:
+                        delivery.status = "delivered"
+                        delivery.delivered_at = datetime.now(timezone.utc)
+                        delivery.next_retry_at = None
+                        delivered += 1
+                    elif resp.status_code == 410:
+                        # Spec: the receiver unsubscribed — stop everything.
+                        delivery.status = "disabled"
+                        endpoint.enabled = False
+                        disabled += 1
+                    else:
+                        if delivery.attempts >= _WEBHOOK_MAX_ATTEMPTS:
+                            delivery.status = "failed"
+                            delivery.next_retry_at = None
+                            failed += 1
+                        else:
+                            delay = _WEBHOOK_RETRY_DELAYS[
+                                min(delivery.attempts - 1, len(_WEBHOOK_RETRY_DELAYS) - 1)
+                            ]
+                            # Jitter lives in the activity (non-determinism
+                            # belongs here, never in a workflow).
+                            delay = delay * (1.0 + random.uniform(0.0, 0.2))
+                            delivery.next_retry_at = (
+                                datetime.now(timezone.utc) + timedelta(seconds=delay)
+                            )
+                            retried += 1
+                except (WebhookUrlError, httpx.HTTPError) as e:
+                    delivery.attempts += 1
+                    delivery.last_error = str(redact_error(e))[:500]
+                    if delivery.attempts >= _WEBHOOK_MAX_ATTEMPTS:
+                        delivery.status = "failed"
+                        delivery.next_retry_at = None
+                        failed += 1
+                    else:
+                        delay = _WEBHOOK_RETRY_DELAYS[
+                            min(delivery.attempts - 1, len(_WEBHOOK_RETRY_DELAYS) - 1)
+                        ]
+                        delivery.next_retry_at = (
+                            datetime.now(timezone.utc) + timedelta(seconds=delay)
+                        )
+                        retried += 1
+                except Exception as e:  # noqa: BLE001 — one bad delivery never kills the scan
+                    delivery.last_error = str(redact_error(e))[:500]
+
+        await session.commit()
+
+    return {
+        "scanned": len(deliveries),
+        "delivered": delivered,
+        "retried": retried,
+        "failed": failed,
+        "disabled": disabled,
+    }

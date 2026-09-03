@@ -92,8 +92,19 @@ class Settings(BaseSettings):
             )
         return v
 
+    # Previous key during a rotation: MultiFernet decrypts with it while
+    # encrypting with ENCRYPTION_KEY. Remove after the rotation completes.
+    ENCRYPTION_KEY_PREVIOUS: str | None = Field(default=None)
+
     # CORS: exact origins only (no wildcard) in production
     CORS_ORIGINS: str = "http://localhost:3000,http://127.0.0.1:3000"
+    # Outbound webhooks (Standard Webhooks)
+    WEBHOOK_TIMEOUT_SECONDS: float = 15.0  # spec: 15-30s
+    WEBHOOK_MAX_ENDPOINTS: int = 10  # fan-out cap for the single operator
+    WEBHOOK_ALLOW_PRIVATE_URLS: bool = False  # LAN receivers; never allows link-local
+
+    # Activity concurrency aligned with the DB pool (10 + 20 overflow).
+    TEMPORAL_MAX_CONCURRENT_ACTIVITIES: int = 25
 
     # Set true ONLY when a trusted reverse proxy that overwrites
     # X-Forwarded-For fronts the API. The rate limiter then keys on the

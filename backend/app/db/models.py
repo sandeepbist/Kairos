@@ -185,3 +185,54 @@ class OAuthTokenModel(Base):
     user_id = Column(String(36), nullable=True)
     created_at = Column(DateTime(timezone=True), default=utc_now, nullable=False)
     updated_at = Column(DateTime(timezone=True), default=utc_now, onupdate=utc_now, nullable=False)
+
+
+class WebhookEndpointModel(Base):
+    """Outbound webhook destination (Standard Webhooks). The secret is
+    Fernet-encrypted like OAuth tokens; previous_secret_enc stays
+    signable for 24h after rotation so receivers swap keys without a
+    delivery gap (spec: multi-key signing)."""
+    __tablename__ = "webhook_endpoints"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    url = Column(String(2048), nullable=False)
+    description = Column(String(200), nullable=False, default="")
+    secret_enc = Column(Text, nullable=False)
+    previous_secret_enc = Column(Text, nullable=True)
+    rotated_at = Column(DateTime(timezone=True), nullable=True)
+    enabled = Column(Boolean, nullable=False, default=True)
+    event_types = Column(JSON, nullable=False, default=lambda: ["*"])  # "*" = all events
+    created_at = Column(DateTime(timezone=True), default=utc_now, nullable=False)
+    updated_at = Column(DateTime(timezone=True), default=utc_now, onupdate=utc_now, nullable=False)
+
+    deliveries = relationship(
+        "WebhookDeliveryModel", back_populates="endpoint", cascade="all, delete-orphan"
+    )
+
+
+class WebhookDeliveryModel(Base):
+    """One event to one endpoint. msg_id is minted once and reused for
+    every attempt so receivers can dedupe retries (spec requirement)."""
+    __tablename__ = "webhook_deliveries"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    endpoint_id = Column(
+        String(36), ForeignKey("webhook_endpoints.id", ondelete="CASCADE"),
+        nullable=False, index=True,
+    )
+    msg_id = Column(String(64), nullable=False)
+    event_type = Column(String(50), nullable=False)
+    payload = Column(JSON, nullable=False)  # full envelope {"type","timestamp","data"}
+    status = Column(String(20), nullable=False, default="pending", index=True)
+    attempts = Column(Integer, nullable=False, default=0)
+    last_response_code = Column(Integer, nullable=True)
+    last_error = Column(String(500), nullable=True)
+    next_retry_at = Column(DateTime(timezone=True), nullable=True)
+    delivered_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), default=utc_now, nullable=False)
+    updated_at = Column(DateTime(timezone=True), default=utc_now, onupdate=utc_now, nullable=False)
+
+    endpoint = relationship("WebhookEndpointModel", back_populates="deliveries")
+    __table_args__ = (
+        Index("ix_webhook_deliveries_endpoint_created", "endpoint_id", "created_at"),
+    )

@@ -14,7 +14,21 @@ with workflow.unsafe.imports_passed_through():
         update_routing_memory_activity,
         complete_batch_activity,
         expire_batch_activity,
+        emit_webhook_event_activity,
     )
+
+
+async def _emit(event_type: str, data: dict[str, Any]) -> None:
+    """Fire-and-forget webhook fan-out; never blocks the pipeline."""
+    try:
+        await workflow.execute_activity(
+            emit_webhook_event_activity,
+            args=[event_type, data],
+            start_to_close_timeout=timedelta(seconds=15),
+            retry_policy=RetryPolicy(maximum_attempts=1),
+        )
+    except Exception:  # noqa: BLE001 — webhooks must never fail the batch
+        workflow.logger.warning("Webhook emit %s failed; pipeline continues.", event_type)
 
 
 @workflow.defn
@@ -107,6 +121,10 @@ class ProcessBatchWorkflow:
                 args=[batch_id],
                 start_to_close_timeout=timedelta(seconds=15),
             )
+            await _emit("batch.expired", {
+                "batch_id": batch_id,
+                "reason": "Approval timed out after 7 days",
+            })
             return {"batch_id": batch_id, "status": "expired", "reason": "Approval timed out after 7 days"}
 
         # 4. Process User Decisions (Per-Item Independent Activities with Retry)
@@ -146,6 +164,13 @@ class ProcessBatchWorkflow:
                     args=[item_id, batch_id, description, suggested_tool, "rejected", True],
                     start_to_close_timeout=timedelta(seconds=15),
                 )
+                await _emit("action.rejected", {
+                    "batch_id": batch_id,
+                    "item_id": item_id,
+                    "tool": suggested_tool,
+                    "description": description,
+                    "rejection_reason": rejection_reason,
+                })
                 execution_results.append({"item_id": item_id, "status": "rejected"})
             else:
                 # APPROVE or MODIFY_AND_APPROVE
@@ -174,6 +199,15 @@ class ProcessBatchWorkflow:
                     args=[item_id, batch_id, description, suggested_tool, final_tool, was_overridden],
                     start_to_close_timeout=timedelta(seconds=15),
                 )
+                await _emit("action.executed", {
+                    "batch_id": batch_id,
+                    "item_id": item_id,
+                    "tool": final_tool,
+                    "status": exec_res.get("status"),
+                    "description": description,
+                    "external_url": exec_res.get("external_url"),
+                    "latency_ms": exec_res.get("latency_ms"),
+                })
                 execution_results.append({"item_id": item_id, "tool": final_tool, "result": exec_res})
 
         # 5. Complete Batch Activity
@@ -182,6 +216,13 @@ class ProcessBatchWorkflow:
             args=[batch_id],
             start_to_close_timeout=timedelta(seconds=15),
         )
+        await _emit("batch.completed", {
+            "batch_id": batch_id,
+            "items": len(self._decisions),
+            "executed": sum(1 for r in execution_results if r.get("status") != "rejected" and r.get("status") != "skipped_unknown_item"),
+            "rejected": sum(1 for r in execution_results if r.get("status") == "rejected"),
+            "skipped": sum(1 for r in execution_results if r.get("status") == "skipped_unknown_item"),
+        })
 
         return {
             "batch_id": batch_id,

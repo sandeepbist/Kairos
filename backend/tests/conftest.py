@@ -51,6 +51,8 @@ def setup_and_teardown_test_db():
                     "oauth_tokens",
                     "routing_feedback",
                     "task_ledger_tasks",
+                    "webhook_deliveries",
+                    "webhook_endpoints",
                 ):
                     await conn.execute(text(f"TRUNCATE TABLE {table} CASCADE"))
 

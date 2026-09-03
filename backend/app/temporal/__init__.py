@@ -8,6 +8,8 @@ from .activities import (
     update_routing_memory_activity,
     complete_batch_activity,
     expire_batch_activity,
+    emit_webhook_event_activity,
+    dispatch_webhooks_activity,
 )
 
 __all__ = [
@@ -19,4 +21,6 @@ __all__ = [
     "update_routing_memory_activity",
     "complete_batch_activity",
     "expire_batch_activity",
+    "emit_webhook_event_activity",
+    "dispatch_webhooks_activity",
 ]

@@ -20,6 +20,10 @@ mcp>=2.1.0
 # Slack Socket Mode (ingestion bot; builtin websocket client, no extra deps)
 slack-sdk>=3.44.0
 
+# Standard Webhooks official verifier — the TEST ORACLE for our signer
+# (the runtime sender is stdlib hmac; this lib never runs in prod paths)
+standardwebhooks>=1.1.0
+
 # Durable Execution
 temporalio>=1.8.0
 

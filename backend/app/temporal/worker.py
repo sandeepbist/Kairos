@@ -7,6 +7,7 @@ from app.config import settings
 from .workflows import ProcessBatchWorkflow
 from .gmail_poll import GmailPollWorkflow
 from .slack_ingest import SlackIngestWorkflow
+from .webhook_dispatch import WebhookDispatchWorkflow
 from .activities import (
     extract_and_route_activity,
     persist_extracted_items_activity,
@@ -17,6 +18,8 @@ from .activities import (
     expire_batch_activity,
     ingest_gmail_history_activity,
     slack_socket_poll_activity,
+    emit_webhook_event_activity,
+    dispatch_webhooks_activity,
 )
 
 logger = logging.getLogger(__name__)
@@ -35,7 +38,12 @@ def create_worker(client: Client) -> Worker:
     return Worker(
         client,
         task_queue=settings.TEMPORAL_TASK_QUEUE,
-        workflows=[ProcessBatchWorkflow, GmailPollWorkflow, SlackIngestWorkflow],
+        # Align activity concurrency with the DB pool (10 + 20 overflow):
+        # temporalio's default 100 would oversubscribe Postgres during a
+        # multi-batch burst, leaving activities to timeout on pool_timeout
+        # and retry — doubling load exactly when the system is busiest.
+        max_concurrent_activities=settings.TEMPORAL_MAX_CONCURRENT_ACTIVITIES,
+        workflows=[ProcessBatchWorkflow, GmailPollWorkflow, SlackIngestWorkflow, WebhookDispatchWorkflow],
         activities=[
             extract_and_route_activity,
             persist_extracted_items_activity,
@@ -46,6 +54,8 @@ def create_worker(client: Client) -> Worker:
             expire_batch_activity,
             ingest_gmail_history_activity,
             slack_socket_poll_activity,
+            emit_webhook_event_activity,
+            dispatch_webhooks_activity,
         ],
     )
 
