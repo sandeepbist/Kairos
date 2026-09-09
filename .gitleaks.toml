@@ -1,0 +1,41 @@
+# Gitleaks configuration — Kairos
+#
+# Baseline scan (gitleaks v8, full git history) flags 7 findings. All are
+# false positives, allowlisted below by exact file path:
+#
+#   1. The deterministic dev-only Fernet key from backend/app/config.py
+#      (also present in the *history* of .env.example, commit a2b2bc3,
+#      where it shipped as a documented template default). Production
+#      config refuses to boot with this key — the APP_ENV=production
+#      validator rejects the dev default — so it grants nothing.
+#   2. backend/tests/test_phase10_redaction.py embeds fake AIzaSy…/sk-…
+#      keys ON PURPOSE: the file tests that the secret-redaction layer
+#      strips exactly such strings from logs and error text.
+#   3. backend/tests/test_phase5_api_endpoints.py: "jira_pat_sec_…" — a
+#      vault-encryption fixture; the test asserts it gets encrypted.
+#   4. backend/tests/test_phase14_mcp_in.py: TEST_KEY test constant.
+#
+# Paths (not secret values) are allowlisted so new files are still fully
+# scanned; the trade-off is that a real secret pasted into these exact
+# test files would not be flagged. They are fixture files whose job is
+# to contain fake keys.
+
+[extend]
+use.default = true
+
+[allowlist]
+description = "Kairos false positives: dev Fernet key + redaction/vault test fixtures"
+paths = [
+  # Deterministic dev-only Fernet key (config.py default; prod-gated by
+  # the APP_ENV=production startup validator). Mirrored in .env.example
+  # history before it was blanked to a placeholder.
+  '''(^|/)backend/app/config\.py$''',
+  '''(^|/)\.env\.example$''',
+  # Redaction suite: fake keys are the test input; assertions prove the
+  # redactor removes them from output.
+  '''(^|/)backend/tests/test_phase10_redaction\.py$''',
+  # Vault-encryption and MCP-server tests: dummy tokens, encrypted
+  # in-test, never used against a real service.
+  '''(^|/)backend/tests/test_phase5_api_endpoints\.py$''',
+  '''(^|/)backend/tests/test_phase14_mcp_in\.py$''',
+]

@@ -1,0 +1,47 @@
+name: Release
+
+# Tag-driven GitHub Releases. The images themselves are published by
+# publish.yml on the same tag push; this workflow only cuts the Release
+# object. It intentionally depends on nothing — if CI fails after the
+# tag exists, edit/re-run from the release page rather than leaving the
+# pipeline blocked.
+#
+# Recommended repo settings (cannot be set from a workflow): require the
+# CI and Security workflows on main via branch protection, and add a tag
+# protection rule for `v*` so only maintainers push release tags.
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write # create the GitHub Release
+
+jobs:
+  release:
+    name: Create GitHub Release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify tag matches backend/VERSION
+        run: |
+          tag="${GITHUB_REF#refs/tags/}"
+          version="$(tr -d ' \t\r\n' < backend/VERSION)"
+          if [[ -z "$version" ]]; then
+            echo "::error::backend/VERSION is empty or missing"
+            exit 1
+          fi
+          if [[ "$tag" != "v${version}" ]]; then
+            echo "::error::backend/VERSION is ${version} but tag is ${tag} — run scripts/release.sh to cut the release from the repo, not a hand-pushed tag"
+            exit 1
+          fi
+          echo "Tag ${tag} matches backend/VERSION (${version})"
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="${GITHUB_REF#refs/tags/}"
+          gh release create "$tag" \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "$tag" \
+            --generate-notes

@@ -5,6 +5,15 @@ on:
     branches: [main]
   pull_request:
 
+# Least privilege: CI only needs to read the repo.
+permissions:
+  contents: read
+
+# One CI run per ref at a time; PRs cancel superseded in-progress runs.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   backend:
     runs-on: ubuntu-latest
@@ -86,3 +95,67 @@ jobs:
       - name: Build
         working-directory: frontend
         run: npm run build
+
+  # Browser end-to-end suite (Playwright) against live Postgres + Temporal.
+  # scripts/e2e-stack.sh boots worker + API + frontend on top of the services
+  # below, runs `npx playwright test`, and tears everything down again.
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: kairos_user
+          POSTGRES_PASSWORD: kairos_password
+          POSTGRES_DB: kairos_db
+        ports: ["5435:5432"]
+        options: >-
+          --health-cmd "pg_isready -U kairos_user -d kairos_db"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      APP_ENV: test
+      POSTGRES_HOST: localhost
+      POSTGRES_PORT: "5435"
+      TEMPORAL_HOST: localhost:7234
+    steps:
+      # Same pattern as the backend job: Actions service containers cannot
+      # pass args, so Temporal runs as a docker-run step with a readiness probe.
+      - name: Start Temporal dev server
+        run: |
+          docker run -d --name temporal-ci -p 7234:7234 \
+            temporalio/temporal:1.8.2 \
+            server start-dev --ip 0.0.0.0 --port 7234 --db-filename /tmp/temporal.db
+          for i in $(seq 1 30); do
+            if nc -z localhost 7234; then
+              echo "Temporal ready"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "Temporal failed to start"
+          docker logs temporal-ci
+          exit 1
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install backend dependencies
+        working-directory: backend
+        run: pip install -r requirements.txt
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+      - name: Install Playwright browser
+        working-directory: frontend
+        run: npx playwright install chromium --with-deps
+      - name: Run e2e stack
+        run: bash scripts/e2e-stack.sh

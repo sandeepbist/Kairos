@@ -1,0 +1,118 @@
+name: Publish
+
+# Release channels:
+#   push to main  → edge channel: kairos-backend:edge / kairos-frontend:edge
+#                   plus immutable sha-<short> tags. No GitHub Release.
+#   push tag v*   → stable channel: :vX.Y.Z, :stable, :latest
+#                   (release.yml separately cuts the GitHub Release).
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+
+permissions:
+  contents: read
+  packages: write # push images to ghcr.io
+
+jobs:
+  backend:
+    name: Build & push backend image
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compute lowercase GHCR owner
+        id: owner
+        run: echo "owner=${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_OUTPUT"
+      - uses: docker/setup-buildx-action@v3
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Compute image tags
+        id: tags
+        run: |
+          short="${GITHUB_SHA::7}"
+          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            tag="${GITHUB_REF#refs/tags/}"
+            {
+              echo "list<<EOF"
+              echo "ghcr.io/${{ steps.owner.outputs.owner }}/kairos-backend:${tag}"
+              echo "ghcr.io/${{ steps.owner.outputs.owner }}/kairos-backend:stable"
+              echo "ghcr.io/${{ steps.owner.outputs.owner }}/kairos-backend:latest"
+              echo "EOF"
+            } >> "$GITHUB_OUTPUT"
+          else
+            {
+              echo "list<<EOF"
+              echo "ghcr.io/${{ steps.owner.outputs.owner }}/kairos-backend:edge"
+              echo "ghcr.io/${{ steps.owner.outputs.owner }}/kairos-backend:sha-${short}"
+              echo "EOF"
+            } >> "$GITHUB_OUTPUT"
+          fi
+      - name: Show tags
+        run: echo "${{ steps.tags.outputs.list }}" | sed 's/^/  /'
+      - uses: docker/build-push-action@v6
+        id: build
+        with:
+          context: ./backend
+          file: backend/Dockerfile
+          push: true
+          tags: ${{ steps.tags.outputs.list }}
+          provenance: true
+          sbom: true
+      - name: Digest
+        run: echo "pushed backend digest ${{ steps.build.outputs.digest }}"
+
+  frontend:
+    name: Build & push frontend image
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compute lowercase GHCR owner
+        id: owner
+        run: echo "owner=${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_OUTPUT"
+      - uses: docker/setup-buildx-action@v3
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Compute image tags
+        id: tags
+        run: |
+          short="${GITHUB_SHA::7}"
+          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            tag="${GITHUB_REF#refs/tags/}"
+            {
+              echo "list<<EOF"
+              echo "ghcr.io/${{ steps.owner.outputs.owner }}/kairos-frontend:${tag}"
+              echo "ghcr.io/${{ steps.owner.outputs.owner }}/kairos-frontend:stable"
+              echo "ghcr.io/${{ steps.owner.outputs.owner }}/kairos-frontend:latest"
+              echo "EOF"
+            } >> "$GITHUB_OUTPUT"
+          else
+            {
+              echo "list<<EOF"
+              echo "ghcr.io/${{ steps.owner.outputs.owner }}/kairos-frontend:edge"
+              echo "ghcr.io/${{ steps.owner.outputs.owner }}/kairos-frontend:sha-${short}"
+              echo "EOF"
+            } >> "$GITHUB_OUTPUT"
+          fi
+      - name: Show tags
+        run: echo "${{ steps.tags.outputs.list }}" | sed 's/^/  /'
+      # Frontend build context is the REPO ROOT: frontend/Dockerfile copies
+      # PRIVACY.md / TERMS.md from the root and frontend/ itself.
+      - uses: docker/build-push-action@v6
+        id: build
+        with:
+          context: .
+          file: frontend/Dockerfile
+          push: true
+          tags: ${{ steps.tags.outputs.list }}
+          provenance: true
+          sbom: true
+      - name: Digest
+        run: echo "pushed frontend digest ${{ steps.build.outputs.digest }}"

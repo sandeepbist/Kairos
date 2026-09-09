@@ -1,0 +1,35 @@
+version: 2
+
+# Public ecosystems only — no private registries. Images
+# (postgres, temporalio/temporal) are pulled from Docker Hub.
+updates:
+  - package-ecosystem: pip
+    directory: "/backend"
+    schedule:
+      interval: weekly
+    groups:
+      pip-all:
+        patterns: ["*"]
+
+  - package-ecosystem: npm
+    directory: "/frontend"
+    schedule:
+      interval: weekly
+    groups:
+      npm-all:
+        patterns: ["*"]
+
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+    groups:
+      actions-all:
+        patterns: ["*"]
+
+  - package-ecosystem: docker
+    directory: "/" # docker-compose*.yml + backend/Dockerfile + frontend/Dockerfile
+    schedule:
+      interval: weekly
+    allow:
+      - dependency-type: "all"
