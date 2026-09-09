@@ -217,6 +217,109 @@ async def toggle_sandbox_mode(
     }
 
 
+# Fixed Temporal Schedule ids (see setup_gmail_schedule/setup_slack_schedule).
+_GMAIL_SCHEDULE_ID = "kairos-gmail-poll"
+_SLACK_SCHEDULE_ID = "kairos-slack-listen"
+
+
+async def _schedule_state(schedule_id: str) -> dict[str, Any]:
+    """Describes one poller schedule, simplified to running/paused/missing.
+
+    Uses the shared Temporal client; a missing (never armed or deleted)
+    schedule surfaces as {"armed": False, "state": "missing"} instead of
+    an error so the UI can always render both chips.
+    """
+    from temporalio.service import RPCError, RPCStatusCode
+
+    from app.temporal.worker import get_temporal_client
+
+    try:
+        client = await get_temporal_client()
+        handle = client.get_schedule_handle(schedule_id)
+        desc = await handle.describe()
+    except RPCError as e:
+        if e.status == RPCStatusCode.NOT_FOUND:
+            return {"armed": False, "state": "missing"}
+        raise
+    return {
+        "armed": True,
+        "state": "paused" if desc.schedule.state.paused else "running",
+    }
+
+
+async def _resume_if_paused(
+    schedule_id: str, interval_minutes: int, client: Any
+) -> dict[str, Any]:
+    """Duplicate-create path: the fixed-id schedule already exists. If the
+    operator paused it via schedule/stop, unpause so Start genuinely
+    re-arms the poller; an already-running schedule is left untouched."""
+    from temporalio.service import RPCError, RPCStatusCode
+
+    try:
+        desc = await client.get_schedule_handle(schedule_id).describe()
+        if not desc.schedule.state.paused:
+            return {"status": "scheduled", "interval_minutes": interval_minutes, "note": "existing schedule kept"}
+        await client.get_schedule_handle(schedule_id).unpause(
+            note="Resumed via Kairos connectors API (reconnect)."
+        )
+    except RPCError as e:
+        # The create above just reported the schedule as existing; a
+        # vanished-in-between row is surfaced but never masked.
+        if e.status != RPCStatusCode.NOT_FOUND:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail=f"Could not resume schedule: {e.message}",
+            )
+    return {"status": "scheduled", "interval_minutes": interval_minutes, "note": "resumed paused schedule"}
+
+
+@router.get("/pollers", response_model=dict[str, Any])
+async def get_poller_status():
+    """Live armed/paused state of the two ambient poller schedules
+    (Gmail 15-min poll, Slack 5-min listen cycle)."""
+    return {
+        "gmail": await _schedule_state(_GMAIL_SCHEDULE_ID),
+        "slack": await _schedule_state(_SLACK_SCHEDULE_ID),
+    }
+
+
+async def _pause_schedule(schedule_id: str, what: str) -> dict[str, str]:
+    """Pauses (does not delete) a poller schedule. A paused schedule keeps
+    its configuration, so Start re-arms it without recreating anything."""
+    from temporalio.service import RPCError, RPCStatusCode
+
+    from app.temporal.worker import get_temporal_client
+
+    try:
+        client = await get_temporal_client()
+        handle = client.get_schedule_handle(schedule_id)
+        await handle.pause(note=f"Paused via Kairos connectors API ({what}).")
+    except RPCError as e:
+        if e.status == RPCStatusCode.NOT_FOUND:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"No {what} schedule exists to pause.",
+            )
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"Could not pause {what} schedule: {e.message}",
+        )
+    return {"status": "paused", "schedule": schedule_id}
+
+
+@router.post("/gmail/schedule/stop", response_model=dict[str, str])
+async def stop_gmail_schedule():
+    """Pauses the Temporal Schedule that polls Gmail (idempotent)."""
+    return await _pause_schedule(_GMAIL_SCHEDULE_ID, "Gmail poll")
+
+
+@router.post("/slack/schedule/stop", response_model=dict[str, str])
+async def stop_slack_schedule():
+    """Pauses the Temporal Schedule that runs the Slack listen cycle
+    (idempotent)."""
+    return await _pause_schedule(_SLACK_SCHEDULE_ID, "Slack listen")
+
+
 @router.post("/gmail/schedule")
 async def setup_gmail_schedule(
     db: AsyncSession = Depends(get_db),
@@ -260,9 +363,10 @@ async def setup_gmail_schedule(
             ),
         )
     except ScheduleAlreadyRunningError:
-        # Schedule IDs are unique; an existing one means "reconnect",
-        # which is fine — the action and interval are unchanged.
-        return {"status": "scheduled", "interval_minutes": 15, "note": "existing schedule kept"}
+        # Reconnect: the fixed-id schedule already exists. If the operator
+        # had paused it (schedule/stop), resume so Start actually re-arms
+        # the poll instead of leaving it silently paused forever.
+        return await _resume_if_paused(_GMAIL_SCHEDULE_ID, 15, client)
     except Exception as e:
         from app.core.redaction import redact_error
         from fastapi import HTTPException, status as _status
@@ -321,7 +425,7 @@ async def setup_slack_schedule(
             ),
         )
     except ScheduleAlreadyRunningError:
-        return {"status": "scheduled", "interval_minutes": 5, "note": "existing schedule kept"}
+        return await _resume_if_paused(_SLACK_SCHEDULE_ID, 5, client)
     except Exception as e:
         from app.core.redaction import redact_error
         from fastapi import HTTPException, status as _status

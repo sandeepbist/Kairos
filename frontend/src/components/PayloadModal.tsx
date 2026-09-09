@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { ActionItem, TargetTool } from "@/lib/types";
 
 interface PayloadModalProps {
@@ -11,6 +11,9 @@ interface PayloadModalProps {
   onSave: (modifiedPayload: Record<string, unknown>) => void;
 }
 
+const FOCUSABLE_SELECTOR =
+  'button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), a[href], [tabindex]:not([tabindex="-1"])';
+
 export function PayloadModal({
   item,
   targetTool,
@@ -20,15 +23,66 @@ export function PayloadModal({
 }: PayloadModalProps) {
   const [payload, setPayload] = useState<Record<string, unknown>>({ ...item.tool_payload });
 
+  const dialogRef = useRef<HTMLDivElement | null>(null);
+  const previouslyFocusedRef = useRef<HTMLElement | null>(null);
+
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
+      if (e.key === "Escape") {
+        onClose();
+        return;
+      }
+      if (e.key !== "Tab") return;
+
+      // Focus trap: keep Tab cycling inside the dialog
+      const dialog = dialogRef.current;
+      if (!dialog) return;
+      const focusable = Array.from(
+        dialog.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)
+      ).filter((el) => el.offsetParent !== null || el === document.activeElement);
+      if (focusable.length === 0) return;
+
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      const active = document.activeElement;
+
+      if (e.shiftKey) {
+        if (active === first || !dialog.contains(active)) {
+          e.preventDefault();
+          last.focus();
+        }
+      } else {
+        if (active === last || !dialog.contains(active)) {
+          e.preventDefault();
+          first.focus();
+        }
+      }
     };
     if (isOpen) {
       window.addEventListener("keydown", handleKeyDown);
     }
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [isOpen, onClose]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+
+    // Remember what had focus before the dialog opened…
+    previouslyFocusedRef.current = document.activeElement as HTMLElement | null;
+
+    // …and move focus to the first focusable element inside the dialog
+    const dialog = dialogRef.current;
+    if (dialog) {
+      const first = dialog.querySelector<HTMLElement>(FOCUSABLE_SELECTOR);
+      (first ?? dialog).focus();
+    }
+
+    // On close/unmount, hand focus back to the trigger element
+    return () => {
+      const el = previouslyFocusedRef.current;
+      if (el && document.contains(el)) el.focus();
+    };
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
@@ -66,6 +120,7 @@ export function PayloadModal({
       }}
     >
       <div
+        ref={dialogRef}
         className="panel-elevated fade-in"
         style={{ width: "100%", maxWidth: "480px", padding: "22px 24px" }}
         role="dialog"

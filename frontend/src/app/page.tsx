@@ -1,10 +1,18 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ingestBatch } from "@/lib/api";
+import {
+  getPollerStatus,
+  ingestBatch,
+  ingestExport,
+  startGmailPoller,
+  startSlackPoller,
+  stopGmailPoller,
+  stopSlackPoller,
+} from "@/lib/api";
 import { errorMessage } from "@/lib/errors";
-import { SourceType } from "@/lib/types";
+import { ExportFormat, PollersResponse, SourceType } from "@/lib/types";
 
 const SAMPLE_PRESETS = {
   meeting: {
@@ -50,6 +58,21 @@ const SOURCE_LABELS: Record<SourceType, string> = {
   general_notes: "General notes",
 };
 
+const EXPORT_FORMATS: Array<{ value: ExportFormat; label: string }> = [
+  { value: "markdown", label: "Meetily / Granola" },
+  { value: "otter", label: "Otter" },
+  { value: "fireflies", label: "Fireflies" },
+  { value: "slack_export", label: "Slack export" },
+  { value: "plain", label: "Plain text" },
+];
+
+type IngestMode = "paste" | "export";
+
+const EMPTY_POLLERS: PollersResponse = {
+  gmail: { armed: false, state: "missing" },
+  slack: { armed: false, state: "missing" },
+};
+
 export default function IngestPage() {
   const router = useRouter();
   const [rawText, setRawText] = useState("");
@@ -57,12 +80,44 @@ export default function IngestPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const [mode, setMode] = useState<IngestMode>("paste");
+  const [exportFormat, setExportFormat] = useState<ExportFormat>("markdown");
+
+  const [pollers, setPollers] = useState<PollersResponse>(EMPTY_POLLERS);
+  const [pollerBusy, setPollerBusy] = useState<string | null>(null);
+  const [sourceError, setSourceError] = useState<string | null>(null);
+  const noticeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const wordCount = rawText.trim() ? rawText.trim().split(/\s+/).length : 0;
   const approxTokens = Math.round(wordCount * 1.33);
   // Mirrors backend bounds: 50k tokens single-pass, speaker-aware
   // map-reduce above it, 50k-character truncation hard stop.
   const TOKEN_LIMIT = 50_000;
   const overLimit = approxTokens > TOKEN_LIMIT;
+
+  const showSourceNotice = useCallback((message: string) => {
+    setSourceError(message);
+    if (noticeTimer.current) clearTimeout(noticeTimer.current);
+    noticeTimer.current = setTimeout(() => setSourceError(null), 6000);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (noticeTimer.current) clearTimeout(noticeTimer.current);
+    };
+  }, []);
+
+  const refreshPollers = useCallback(async () => {
+    try {
+      setPollers(await getPollerStatus());
+    } catch {
+      // Quiet row: an unreachable backend just shows both chips off.
+    }
+  }, []);
+
+  useEffect(() => {
+    void refreshPollers();
+  }, [refreshPollers]);
 
   const handleLoadPreset = (key: keyof typeof SAMPLE_PRESETS) => {
     setRawText(SAMPLE_PRESETS[key].text);
@@ -80,12 +135,56 @@ export default function IngestPage() {
     setError(null);
 
     try {
-      const response = await ingestBatch(rawText, sourceType);
+      const response =
+        mode === "export"
+          ? await ingestExport(rawText, exportFormat, sourceType)
+          : await ingestBatch(rawText, sourceType);
       router.push(`/review/${response.batch_id}`);
     } catch (err) {
       setError(errorMessage(err, "Failed to submit batch. Verify the backend is reachable."));
       setLoading(false);
     }
+  };
+
+  const handlePollerToggle = async (which: "gmail" | "slack") => {
+    setPollerBusy(which);
+    try {
+      const isArmed = pollers[which].armed && pollers[which].state !== "paused";
+      if (which === "gmail") {
+        if (isArmed) await stopGmailPoller();
+        else await startGmailPoller();
+      } else {
+        if (isArmed) await stopSlackPoller();
+        else await startSlackPoller();
+      }
+      await refreshPollers();
+    } catch (err) {
+      showSourceNotice(errorMessage(err, "Poller change failed. Verify the backend is reachable."));
+      await refreshPollers();
+    } finally {
+      setPollerBusy(null);
+    }
+  };
+
+  const renderPollerChip = (which: "gmail" | "slack", label: string) => {
+    const { armed, state } = pollers[which];
+    const on = armed && state === "running";
+    return (
+      <span style={{ display: "inline-flex", alignItems: "center", gap: "8px" }}>
+        <span className="mono-label" style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}>
+          <span className={`status-dot ${on ? "status-on" : "status-off"}`} />
+          {label} — {state ?? "missing"}
+        </span>
+        <button
+          type="button"
+          className="btn btn-ghost btn-sm"
+          disabled={pollerBusy === which}
+          onClick={() => handlePollerToggle(which)}
+        >
+          {pollerBusy === which ? "…" : on ? "Stop" : "Start"}
+        </button>
+      </span>
+    );
   };
 
   return (
@@ -106,6 +205,30 @@ export default function IngestPage() {
         </p>
       </div>
 
+      {/* Mode toggle: Paste / Notetaker export */}
+      <div
+        className="rise rise-1"
+        style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "12px" }}
+      >
+        <span className="mono-label" style={{ marginRight: "2px" }}>
+          PASTE OR EXPORT
+        </span>
+        <button
+          type="button"
+          className={`btn btn-sm ${mode === "paste" ? "btn-secondary" : "btn-ghost"}`}
+          onClick={() => setMode("paste")}
+        >
+          Paste
+        </button>
+        <button
+          type="button"
+          className={`btn btn-sm ${mode === "export" ? "btn-secondary" : "btn-ghost"}`}
+          onClick={() => setMode("export")}
+        >
+          Notetaker export
+        </button>
+      </div>
+
       {/* Templates + format */}
       <div
         className="rise rise-1"
@@ -119,19 +242,42 @@ export default function IngestPage() {
         }}
       >
         <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
-          <span className="mono-label" style={{ marginRight: "2px" }}>
-            SAMPLES
-          </span>
-          {(Object.keys(SAMPLE_PRESETS) as Array<keyof typeof SAMPLE_PRESETS>).map((key) => (
-            <button
-              key={key}
-              type="button"
-              className="btn btn-secondary btn-sm"
-              onClick={() => handleLoadPreset(key)}
-            >
-              {SAMPLE_PRESETS[key].label}
-            </button>
-          ))}
+          {mode === "paste" ? (
+            <>
+              <span className="mono-label" style={{ marginRight: "2px" }}>
+                SAMPLES
+              </span>
+              {(Object.keys(SAMPLE_PRESETS) as Array<keyof typeof SAMPLE_PRESETS>).map((key) => (
+                <button
+                  key={key}
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  onClick={() => handleLoadPreset(key)}
+                >
+                  {SAMPLE_PRESETS[key].label}
+                </button>
+              ))}
+            </>
+          ) : (
+            <>
+              <span className="mono-label" style={{ marginRight: "2px" }}>
+                FORMAT
+              </span>
+              <select
+                value={exportFormat}
+                onChange={(e) => setExportFormat(e.target.value as ExportFormat)}
+                className="select"
+                style={{ width: "auto", fontSize: "0.8rem", padding: "6px 10px" }}
+                aria-label="Export format"
+              >
+                {EXPORT_FORMATS.map((f) => (
+                  <option key={f.value} value={f.value}>
+                    {f.label}
+                  </option>
+                ))}
+              </select>
+            </>
+          )}
         </div>
 
         <select
@@ -154,7 +300,11 @@ export default function IngestPage() {
         <textarea
           value={rawText}
           onChange={(e) => setRawText(e.target.value)}
-          placeholder="Paste raw conversation, transcript, or unstructured notes…"
+          placeholder={
+            mode === "export"
+              ? "Paste the notetaker export — markdown, CSV-ish transcript, or Slack export JSON…"
+              : "Paste raw conversation, transcript, or unstructured notes…"
+          }
           rows={12}
           spellCheck={false}
           style={{
@@ -241,6 +391,30 @@ export default function IngestPage() {
           </div>
         ))}
       </div>
+
+      {/* Sources — quiet poller status strip */}
+      <div
+        className="rise rise-4"
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: "20px",
+          flexWrap: "wrap",
+          marginTop: "28px",
+          paddingTop: "18px",
+          borderTop: "1px solid var(--line)",
+        }}
+      >
+        <span className="mono-label">SOURCES</span>
+        {renderPollerChip("gmail", "Gmail poller")}
+        {renderPollerChip("slack", "Slack bot")}
+      </div>
+
+      {sourceError && (
+        <div className="notice notice-error" style={{ marginTop: "10px" }}>
+          {sourceError}
+        </div>
+      )}
     </div>
   );
 }

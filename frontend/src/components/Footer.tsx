@@ -28,7 +28,7 @@ export function Footer() {
           © {new Date().getFullYear()} KAIROS — AMBIENT ACTION ENGINE
         </span>
 
-        <div style={{ display: "flex", gap: "22px", fontSize: "0.8rem" }}>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: "22px", fontSize: "0.8rem" }}>
           <Link href="/terms" className="link-quiet">
             Terms
           </Link>

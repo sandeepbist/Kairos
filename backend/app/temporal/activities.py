@@ -189,18 +189,22 @@ async def expire_batch_activity(batch_id: str) -> dict[str, Any]:
     return {"batch_id": batch_id, "status": "not_found"}
 
 
-async def _get_gmail_access_token() -> str | None:
-    """Returns a usable access token from the gmail vault row, refreshing
-    via Google's OAuth endpoint when expired. GMAIL_CLIENT_ID/SECRET must
-    be in env for the refresh leg (a poller cannot use installed-app flows).
+async def _refresh_google_token(provider: str) -> str | None:
+    """Returns a usable access token for any Google-backed provider vault
+    row ("gmail", "google_calendar", "google_tasks"), refreshing via
+    Google's OAuth endpoint when the token is expired or expiring within
+    60s. All Google scopes share one OAuth client, so the refresh leg
+    uses GMAIL_CLIENT_ID/SECRET regardless of provider. Returns None when
+    the provider has no vault row; on refresh failure the stale token
+    (if any) is returned for the caller to fail on.
     """
     import os
 
     async with async_session_factory() as session:
-        res = await session.execute(
-            select(OAuthTokenModel).where(OAuthTokenModel.provider == "gmail")
+        rows = await session.scalars(
+            select(OAuthTokenModel).where(OAuthTokenModel.provider == provider)
         )
-        rec = res.scalar_one_or_none()
+        rec = rows.first()
         if not rec:
             return None
         from app.core.security import decrypt_token
@@ -217,7 +221,8 @@ async def _get_gmail_access_token() -> str | None:
         client_secret = os.getenv("GMAIL_CLIENT_SECRET")
         if not (client_id and client_secret):
             activity.logger.warning(
-                "Gmail token expired and GMAIL_CLIENT_ID/SECRET not set; skipping refresh."
+                "%s token expired and GMAIL_CLIENT_ID/SECRET not set; skipping refresh.",
+                provider,
             )
             return access or None
 
@@ -234,7 +239,9 @@ async def _get_gmail_access_token() -> str | None:
             },
         )
         if not resp.is_success:
-            activity.logger.warning("Gmail token refresh failed: HTTP %s", resp.status_code)
+            activity.logger.warning(
+                "%s token refresh failed: HTTP %s", provider, resp.status_code
+            )
             return access or None
         payload = resp.json()
 
@@ -242,16 +249,41 @@ async def _get_gmail_access_token() -> str | None:
     from app.core.security import encrypt_token as _enc
 
     async with async_session_factory() as session:
-        res = await session.execute(
-            select(OAuthTokenModel).where(OAuthTokenModel.provider == "gmail")
+        rows = await session.scalars(
+            select(OAuthTokenModel).where(OAuthTokenModel.provider == provider)
         )
-        rec2 = res.scalar_one()
+        rec2 = rows.first()
         rec2.access_token_enc = _enc(payload["access_token"])
         rec2.expires_at = datetime.now(timezone.utc) + timedelta(
             seconds=int(payload.get("expires_in", 3600))
         )
         await session.commit()
     return payload["access_token"]
+
+
+async def _get_gmail_access_token() -> str | None:
+    """Returns a usable access token from the gmail vault row (refreshing
+    via Google when expired). Delegates to the shared Google refresh flow
+    — one OAuth client backs every Google-scoped provider.
+    """
+    return await _refresh_google_token("gmail")
+
+
+async def _get_calendar_access_token() -> str | None:
+    """Access token for the google_calendar vault row, refreshing when it
+    expires within 60s (Google OAuth client shared with Gmail)."""
+    return await _refresh_google_token("google_calendar")
+
+
+async def _get_google_tasks_access_token() -> str | None:
+    """Access token for Google Tasks. Prefers a tasks-scoped google_tasks
+    vault row; operators who granted the calendar+tasks bundle together
+    only have a google_calendar row, so that row is the fallback (mirrors
+    the connector's load pattern)."""
+    token = await _refresh_google_token("google_tasks")
+    if token:
+        return token
+    return await _refresh_google_token("google_calendar")
 
 
 def _now_ts() -> float:

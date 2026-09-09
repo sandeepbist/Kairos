@@ -65,6 +65,7 @@ export interface HistoryBatch {
   total_items: number;
   executed_items: number;
   rejected_items: number;
+  failed_items?: number;
   logs: ExecutionLog[];
 }
 
@@ -94,6 +95,22 @@ export interface WebhookEndpoint {
 }
 
 export type CreateWebhookResponse = WebhookEndpoint & { secret: string; secret_notice: string };
+
+// ── Notetaker export ingest (Phase 20) ──────────────────────────────
+
+export type ExportFormat = "markdown" | "otter" | "fireflies" | "slack_export" | "plain";
+
+// ── Ambient poller status (Phase 20) ────────────────────────────────
+
+export interface PollerState {
+  armed: boolean;
+  state: string | null;
+}
+
+export interface PollersResponse {
+  gmail: PollerState;
+  slack: PollerState;
+}
 
 export interface WebhookDelivery {
   id: string;

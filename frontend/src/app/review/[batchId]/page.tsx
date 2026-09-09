@@ -26,13 +26,17 @@ export default function ReviewPage({
   const [progress, setProgress] = useState<string | null>(null);
 
   const fetchStatusRef = useRef<() => void>(() => {});
+  const batchStatusRef = useRef<string | null>(null);
 
   const fetchStatus = async () => {
     try {
       const data = await getBatch(batchId);
       setBatch(data);
-      if (data.status === "awaiting_approval" || data.status === "completed") {
+      batchStatusRef.current = data.status;
+      if (data.status !== "processing") {
         setLoading(false);
+      }
+      if (data.status === "awaiting_approval") {
         setDecisions((prev) => {
           if (Object.keys(prev).length === 0 && data.items.length > 0) {
             const initialMap: Record<string, ActionItemDecision> = {};
@@ -61,12 +65,10 @@ export default function ReviewPage({
     fetchStatusRef.current = fetchStatus;
     const initialFetch = setTimeout(fetchStatus, 0);
     const interval: ReturnType<typeof setInterval> = setInterval(() => {
-      setBatch((curr) => {
-        if (!curr || curr.status === "processing" || curr.status === "executing") {
-          fetchStatusRef.current();
-        }
-        return curr;
-      });
+      const status = batchStatusRef.current;
+      if (!status || status === "processing" || status === "executing") {
+        fetchStatusRef.current();
+      }
     }, 1500);
 
     return () => {
@@ -182,7 +184,47 @@ export default function ReviewPage({
 
   const approvedCount = Object.values(decisions).filter((d) => d.action !== "REJECT").length;
   const rejectedCount = Object.values(decisions).filter((d) => d.action === "REJECT").length;
-  const isAwaiting = batch?.status === "awaiting_approval";
+  const isReviewable = batch?.status === "awaiting_approval";
+
+  // Per-item outcome counts for the read-only banner on terminal batches.
+  const items = batch?.items ?? [];
+  const executedCount = items.filter((i) => i.status === "executed").length;
+  const failedItemCount = items.filter((i) => i.status === "failed").length;
+  const ranCount = executedCount + failedItemCount;
+  const dismissedCount = items.filter((i) => i.status === "rejected").length;
+
+  const outcomeBanner = !batch || isReviewable ? null : (
+    <div
+      className={`notice ${batch.status === "failed" ? "notice-error" : batch.status === "completed" ? "notice-ok" : "notice-info"}`}
+      style={{ alignItems: "center" }}
+    >
+      {batch.status === "executing" ? (
+        <span className="status-dot status-warn status-live" />
+      ) : (
+        <span
+          className={`status-dot ${
+            batch.status === "completed"
+              ? "status-on"
+              : batch.status === "failed"
+                ? "status-err"
+                : "status-off"
+          }`}
+        />
+      )}
+      <span>
+        {batch.status === "completed" && (
+          <>
+            Executed — {ranCount} {ranCount === 1 ? "action" : "actions"} ran
+            {dismissedCount > 0 ? `, ${dismissedCount} dismissed` : ""}
+            {failedItemCount > 0 ? `, ${failedItemCount} failed` : ""}.
+          </>
+        )}
+        {batch.status === "expired" && <>Expired — approval timed out after 7 days.</>}
+        {batch.status === "failed" && <>Failed — extraction did not complete.</>}
+        {batch.status === "executing" && <>Executing — actions are running now.</>}
+      </span>
+    </div>
+  );
 
   return (
     <div className="container" style={{ maxWidth: "1240px" }}>
@@ -210,7 +252,7 @@ export default function ReviewPage({
           </p>
         </div>
 
-        {isAwaiting && (
+        {isReviewable && (
           <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
             <button type="button" className="btn btn-secondary btn-sm" onClick={handleApproveHighConfidence}>
               Approve high confidence
@@ -230,6 +272,9 @@ export default function ReviewPage({
           {error}
         </div>
       )}
+
+      {/* Read-only outcome banner for terminal / mid-execution batches */}
+      {outcomeBanner && <div className="rise" style={{ marginBottom: "20px" }}>{outcomeBanner}</div>}
 
       {/* Workbench grid */}
       <div
@@ -259,6 +304,7 @@ export default function ReviewPage({
               key={item.id}
               item={item}
               decision={decisions[item.id]}
+              readOnly={!isReviewable}
               onDecisionChange={handleDecisionChange}
               onHoverSnippet={setHoveredSnippet}
               isHighlighted={Boolean(
@@ -274,7 +320,7 @@ export default function ReviewPage({
       </div>
 
       {/* Sticky execution bar */}
-      {isAwaiting && (
+      {isReviewable && (
         <div
           className="fade-in"
           style={{

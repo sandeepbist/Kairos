@@ -190,3 +190,54 @@ export async function listWebhookDeliveries(
 export async function armWebhookDispatch(): Promise<{ status: string }> {
   return request("/api/webhooks/arm", { method: "POST" });
 }
+
+export async function deleteBatch(batchId: string): Promise<{ status: string; batch_id: string }> {
+  return request(`/api/history/batches/${batchId}`, { method: "DELETE" });
+}
+
+// ── Notetaker export ingest (Meetily/Granola/Otter/Fireflies/Slack) ─
+
+export async function ingestExport(
+  rawText: string,
+  exportFormat: string,
+  sourceType: SourceType
+): Promise<{ batch_id: string; status: string }> {
+  return request("/api/ingest/export", {
+    method: "POST",
+    body: JSON.stringify({ raw_text: rawText, export_format: exportFormat, source_type: sourceType }),
+  });
+}
+
+// ── Ambient poller control (Gmail/Slack Temporal schedules) ────────
+
+export async function getPollerStatus(): Promise<{
+  gmail: { armed: boolean; state: string | null };
+  slack: { armed: boolean; state: string | null };
+}> {
+  return request("/api/connectors/pollers", { cache: "no-store" });
+}
+
+export async function startGmailPoller(): Promise<{ status: string; interval_minutes?: number }> {
+  return request("/api/connectors/gmail/schedule", { method: "POST" });
+}
+
+export async function stopGmailPoller(): Promise<{ status: string; schedule: string }> {
+  return request("/api/connectors/gmail/schedule/stop", { method: "POST" });
+}
+
+export async function startSlackPoller(): Promise<{ status: string; interval_minutes?: number }> {
+  return request("/api/connectors/slack/schedule", { method: "POST" });
+}
+
+export async function stopSlackPoller(): Promise<{ status: string; schedule: string }> {
+  return request("/api/connectors/slack/schedule/stop", { method: "POST" });
+}
+
+export async function redeliverDelivery(
+  endpointId: string,
+  deliveryId: string
+): Promise<{ status: string }> {
+  return request(`/api/webhooks/${endpointId}/deliveries/${deliveryId}/redeliver`, {
+    method: "POST",
+  });
+}

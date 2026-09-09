@@ -23,15 +23,62 @@ const TOOL_LABELS: Record<TargetTool, string> = {
 
 const CONNECTOR_TOOLS: TargetTool[] = ["notion", "jira", "calendar", "linear", "todoist", "email_draft", "github", "confluence_page", "google_tasks", "asana", "clickup", "task_ledger"];
 
+/** oauth_connected wins when present; falls back to the healthy flag. */
+const isConnected = (
+  status: ConnectorsStatusResponse | null,
+  tool: TargetTool
+): boolean => {
+  const info = status?.connectors?.[tool];
+  return Boolean(info?.oauth_connected ?? info?.healthy);
+};
+
 export function Navbar() {
   const pathname = usePathname();
   const [status, setStatus] = useState<ConnectorsStatusResponse | null>(null);
 
   useEffect(() => {
-    getConnectorsStatus()
-      .then(setStatus)
-      .catch(() => {});
-  }, []);
+    let cancelled = false;
+
+    const fetchStatus = () => {
+      getConnectorsStatus()
+        .then((s) => {
+          if (!cancelled) setStatus(s);
+        })
+        .catch(() => {}); // status is decorative — failures stay silent
+    };
+
+    // (a) on mount and on every route change (covers navigating to /settings,
+    //     where a saved credential must be reflected immediately)
+    fetchStatus();
+
+    // (b) refetch when the tab becomes visible again
+    const handleVisibility = () => {
+      if (document.visibilityState === "visible") fetchStatus();
+    };
+    document.addEventListener("visibilitychange", handleVisibility);
+
+    // (c) poll while the tab is visible
+    const poll = window.setInterval(() => {
+      if (document.visibilityState === "visible") fetchStatus();
+    }, 30_000);
+
+    return () => {
+      cancelled = true;
+      document.removeEventListener("visibilitychange", handleVisibility);
+      window.clearInterval(poll);
+    };
+  }, [pathname]);
+
+  const connectedTools = CONNECTOR_TOOLS.filter((tool) =>
+    isConnected(status, tool)
+  );
+  const connectedCount = connectedTools.length;
+  const connectedTitle =
+    connectedCount > 0
+      ? `Connected (${connectedCount}/12): ${connectedTools
+          .map((tool) => TOOL_LABELS[tool])
+          .join(" · ")} — manage in Settings`
+      : "No connectors connected — manage in Settings";
 
   const navLinks = [
     { href: "/", label: "Ingest" },
@@ -52,16 +99,15 @@ export function Navbar() {
       }}
     >
       <div
-        className="container"
+        className="container nav-row"
         style={{
           display: "flex",
           alignItems: "center",
           justifyContent: "space-between",
-          height: "56px",
         }}
       >
         {/* Brand */}
-        <div style={{ display: "flex", alignItems: "center", gap: "28px" }}>
+        <div className="nav-left" style={{ display: "flex", alignItems: "center" }}>
           <Link
             href="/"
             style={{
@@ -108,34 +154,32 @@ export function Navbar() {
           </nav>
         </div>
 
-        {/* Connector status — quiet dots */}
+        {/* Connector status — compact summary */}
         <div
           style={{ display: "flex", alignItems: "center", gap: "14px" }}
           title="Connector availability — manage in Settings"
         >
-          {CONNECTOR_TOOLS.map((tool) => {
-            const info = status?.connectors?.[tool];
-            const connected = Boolean(info?.oauth_connected ?? info?.healthy);
-            return (
-              <Link
-                key={tool}
-                href="/settings"
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "6px",
-                  textDecoration: "none",
-                  color: connected ? "var(--text-secondary)" : "var(--text-dim)",
-                  fontSize: "0.76rem",
-                  transition: "color var(--fast) var(--ease)",
-                }}
-                title={`${TOOL_LABELS[tool]} ${connected ? "connected" : "not connected"}`}
-              >
-                <span className={`status-dot ${connected ? "status-on" : "status-off"}`} />
-                {TOOL_LABELS[tool]}
-              </Link>
-            );
-          })}
+          <Link
+            href="/settings"
+            className="mono-label nav-summary"
+            data-zero={connectedCount === 0 ? "true" : "false"}
+            aria-label="Connected tools"
+            title={connectedTitle}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "6px",
+              textDecoration: "none",
+              whiteSpace: "nowrap",
+            }}
+          >
+            <span
+              className={`status-dot hide-narrow ${
+                connectedCount > 0 ? "status-on" : "status-off"
+              }`}
+            />
+            {connectedCount}/12 CONNECTED
+          </Link>
 
           <span
             style={{

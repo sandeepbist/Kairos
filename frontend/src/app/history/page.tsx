@@ -1,8 +1,8 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { getHistory } from "@/lib/api";
+import { deleteBatch, getHistory } from "@/lib/api";
 import { errorMessage } from "@/lib/errors";
 import { HistoryBatch, TargetTool } from "@/lib/types";
 
@@ -15,30 +15,75 @@ const STATUS_LABEL: Record<string, { label: string; className: string }> = {
   processing: { label: "Processing", className: "status-warn status-live" },
 };
 
+const TERMINAL_STATUSES = new Set(["completed", "failed", "expired", "awaiting_approval"]);
+
+/** Compact relative timestamp; title carries the full absolute local string. */
+function relativeTime(iso: string): { text: string; title: string } {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return { text: "", title: "" };
+  const title = date.toLocaleString();
+  const diffMs = Date.now() - date.getTime();
+  if (diffMs < 60_000) return { text: "just now", title };
+  const minutes = Math.floor(diffMs / 60_000);
+  if (minutes < 60) return { text: `${minutes}m ago`, title };
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return { text: `${hours}h ago`, title };
+  const days = Math.floor(hours / 24);
+  if (days < 7) return { text: `${days}d ago`, title };
+  return { text: date.toLocaleDateString(), title };
+}
+
 export default function HistoryPage() {
   const [history, setHistory] = useState<HistoryBatch[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
-  const fetchHistoryData = async () => {
+  const fetchHistoryData = useCallback(async () => {
     try {
       const data = await getHistory();
       setHistory(data);
+      setError(null);
     } catch (err) {
       setError(errorMessage(err, "Failed to fetch history"));
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     const initialFetch = setTimeout(fetchHistoryData, 0);
-    const interval = setInterval(fetchHistoryData, 4000);
+    const interval = setInterval(() => {
+      if (document.hidden) return;
+      fetchHistoryData();
+    }, 4000);
+    const onVisible = () => {
+      if (!document.hidden) fetchHistoryData();
+    };
+    document.addEventListener("visibilitychange", onVisible);
     return () => {
       clearTimeout(initialFetch);
       clearInterval(interval);
+      document.removeEventListener("visibilitychange", onVisible);
     };
-  }, []);
+  }, [fetchHistoryData]);
+
+  const handleDelete = async (batchId: string) => {
+    if (!window.confirm("Delete this batch and its records? This cannot be undone.")) return;
+    setDeletingId(batchId);
+    try {
+      await deleteBatch(batchId);
+      setHistory((prev) => prev.filter((b) => b.batch_id !== batchId));
+      setNotice("Batch deleted.");
+      setError(null);
+    } catch (err) {
+      setError(errorMessage(err, "Failed to delete batch"));
+      setNotice(null);
+    } finally {
+      setDeletingId(null);
+    }
+  };
 
   const statusInfo = (status: string) =>
     STATUS_LABEL[status] || { label: status, className: "status-err" };
@@ -69,14 +114,26 @@ export default function HistoryPage() {
           </p>
         </div>
 
-        <Link href="/" className="btn btn-primary btn-sm">
-          New batch
-        </Link>
+        <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+          {!loading && (
+            <span className="mono-label dim">
+              {history.length} {history.length === 1 ? "batch" : "batches"}
+            </span>
+          )}
+          <Link href="/" className="btn btn-primary btn-sm">
+            New batch
+          </Link>
+        </div>
       </div>
 
       {error && (
         <div className="notice notice-error" style={{ marginBottom: "18px" }}>
           {error}
+        </div>
+      )}
+      {notice && (
+        <div className="notice notice-ok" style={{ marginBottom: "18px" }}>
+          {notice}
         </div>
       )}
 
@@ -108,11 +165,18 @@ export default function HistoryPage() {
       <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
         {history.map((b, idx) => {
           const st = statusInfo(b.status);
+          const isTerminal = TERMINAL_STATUSES.has(b.status);
+          const failedCount = b.logs.filter((log) => log.status === "failed").length;
+          const hasFailures = failedCount > 0;
+          const rel = b.created_at ? relativeTime(b.created_at) : null;
           return (
             <div
               key={b.batch_id}
               className={`panel panel-hover rise rise-${Math.min(idx + 1, 5)}`}
-              style={{ padding: "16px 20px" }}
+              style={{
+                padding: "16px 20px",
+                ...(hasFailures ? { borderLeft: "2px solid var(--err)" } : {}),
+              }}
             >
               {/* Row 1: id + source | status + review link */}
               <div
@@ -130,15 +194,18 @@ export default function HistoryPage() {
                     {b.batch_id.slice(0, 8)}
                   </span>
                   <span className="mono-label">{b.source_type.replace(/_/g, " ").toUpperCase()}</span>
-                  <span className="dim" style={{ fontSize: "0.78rem" }}>
-                    {b.created_at ? new Date(b.created_at).toLocaleString() : ""}
-                  </span>
+                  {rel && (
+                    <span className="dim" style={{ fontSize: "0.78rem" }} title={rel.title}>
+                      {rel.text}
+                    </span>
+                  )}
                 </div>
 
                 <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
                   <span
                     className="tag"
                     style={{ display: "flex", alignItems: "center", gap: "7px" }}
+                    title={hasFailures ? `${failedCount} failed item${failedCount === 1 ? "" : "s"}` : undefined}
                   >
                     <span className={`status-dot ${st.className}`} />
                     {st.label}
@@ -147,6 +214,21 @@ export default function HistoryPage() {
                     <Link href={`/review/${b.batch_id}`} className="btn btn-primary btn-sm">
                       Review
                     </Link>
+                  )}
+                  {isTerminal && b.status !== "awaiting_approval" && (
+                    <Link href={`/review/${b.batch_id}`} className="btn btn-secondary btn-sm">
+                      View
+                    </Link>
+                  )}
+                  {isTerminal && (
+                    <button
+                      type="button"
+                      className="btn btn-ghost btn-sm"
+                      onClick={() => handleDelete(b.batch_id)}
+                      disabled={deletingId === b.batch_id}
+                    >
+                      {deletingId === b.batch_id ? "Deleting" : "Delete"}
+                    </button>
                   )}
                 </div>
               </div>
@@ -161,6 +243,7 @@ export default function HistoryPage() {
                   background: "var(--bg-input)",
                   borderRadius: "var(--r-sm)",
                   marginBottom: b.logs.length > 0 ? "12px" : 0,
+                  flexWrap: "wrap",
                 }}
               >
                 <span>{b.total_items} ITEMS</span>
@@ -170,74 +253,92 @@ export default function HistoryPage() {
                 <span style={{ color: b.rejected_items > 0 ? "var(--err)" : undefined }}>
                   {b.rejected_items} DISMISSED
                 </span>
+                {(b.failed_items ?? failedCount) > 0 && (
+                  <span style={{ color: "var(--err)" }}>
+                    {(b.failed_items ?? failedCount)} FAILED
+                  </span>
+                )}
                 {b.token_count ? <span>{b.token_count} TOKENS</span> : null}
               </div>
 
               {/* Row 3: execution logs */}
               {b.logs.length > 0 && (
                 <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-                  {b.logs.map((log) => (
-                    <div
-                      key={log.id}
-                      style={{
-                        display: "flex",
-                        justifyContent: "space-between",
-                        alignItems: "center",
-                        gap: "12px",
-                        padding: "8px 12px",
-                        background: "var(--bg-input)",
-                        border: "1px solid var(--line)",
-                        borderRadius: "var(--r-sm)",
-                        fontSize: "0.82rem",
-                      }}
-                    >
+                  {b.logs.map((log) => {
+                    const failed = log.status === "failed";
+                    return (
                       <div
+                        key={log.id}
                         style={{
                           display: "flex",
+                          justifyContent: "space-between",
                           alignItems: "center",
-                          gap: "10px",
-                          minWidth: 0,
+                          gap: "12px",
+                          padding: "8px 12px",
+                          background: "var(--bg-input)",
+                          border: "1px solid var(--line)",
+                          borderLeft: failed ? "2px solid var(--err)" : undefined,
+                          borderRadius: "var(--r-sm)",
+                          fontSize: "0.82rem",
                         }}
                       >
-                        <span className={`tag tag-tool tag-${log.tool as TargetTool}`}>
-                          {log.tool}
-                        </span>
-                        <span
+                        <div
                           style={{
-                            color: "var(--text-secondary)",
-                            overflow: "hidden",
-                            textOverflow: "ellipsis",
-                            whiteSpace: "nowrap",
+                            display: "flex",
+                            alignItems: "center",
+                            gap: "10px",
+                            minWidth: 0,
                           }}
                         >
-                          {log.item_description || "Action item"}
-                        </span>
-                      </div>
+                          <span className={`tag tag-tool tag-${log.tool as TargetTool}`}>
+                            {log.tool}
+                          </span>
+                          <span
+                            style={{
+                              color: "var(--text-secondary)",
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                              whiteSpace: "nowrap",
+                            }}
+                          >
+                            {log.item_description || "Action item"}
+                          </span>
+                        </div>
 
-                      <div
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          gap: "14px",
-                          flexShrink: 0,
-                        }}
-                      >
-                        {log.latency_ms !== undefined && (
-                          <span className="mono-label">{log.latency_ms}MS</span>
-                        )}
-                        <span
-                          className="status-dot"
-                          style={{ background: log.status === "success" ? "var(--ok)" : "var(--err)" }}
-                          title={log.status}
-                        />
-                        {log.external_url && (
-                          <a href={log.external_url} target="_blank" rel="noreferrer" className="link-accent" style={{ fontSize: "0.78rem", flexShrink: 0 }}>
-                            Open
-                          </a>
-                        )}
+                        <div
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: "14px",
+                            flexShrink: 0,
+                          }}
+                        >
+                          {log.latency_ms !== undefined && (
+                            <span className="mono-label">{log.latency_ms}MS</span>
+                          )}
+                          <span
+                            className="status-dot"
+                            style={{ background: log.status === "success" ? "var(--ok)" : "var(--err)" }}
+                            title={log.status}
+                          />
+                          {failed && (
+                            <span
+                              className="mono-label"
+                              style={{ color: "var(--err)", fontSize: "0.68rem" }}
+                              title={log.status}
+                            >
+                              FAILED
+                            </span>
+                          )}
+                          {log.external_url && (
+                            <a href={log.external_url} target="_blank" rel="noreferrer" className="link-accent" style={{ fontSize: "0.78rem", flexShrink: 0 }}>
+                              Open
+                            </a>
+                          )}
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </div>

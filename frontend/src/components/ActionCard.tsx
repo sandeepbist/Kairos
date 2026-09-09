@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
-import { ActionItem, TargetTool, ActionItemDecision } from "@/lib/types";
+import { ActionItem, TargetTool, ActionItemDecision, ItemStatus } from "@/lib/types";
 import { PayloadModal } from "./PayloadModal";
 
 interface ActionCardProps {
@@ -10,6 +10,7 @@ interface ActionCardProps {
   onDecisionChange: (decision: ActionItemDecision) => void;
   onHoverSnippet: (snippet: string | null) => void;
   isHighlighted?: boolean;
+  readOnly?: boolean;
 }
 
 const TOOL_NAMES: Record<TargetTool, string> = {
@@ -30,12 +31,23 @@ const TOOL_NAMES: Record<TargetTool, string> = {
 const CONFIDENCE_TIER = (c: number): "high" | "mid" | "low" =>
   c >= 0.85 ? "high" : c >= 0.7 ? "mid" : "low";
 
+/** Read-only outcome chip per persisted item status. */
+const OUTCOME: Record<ItemStatus, { className: string; label: string }> = {
+  executed: { className: "status-on", label: "Executed" },
+  failed: { className: "status-err", label: "Failed" },
+  rejected: { className: "status-off", label: "Dismissed" },
+  approved: { className: "status-warn", label: "Running" },
+  modified_approved: { className: "status-warn", label: "Running" },
+  pending: { className: "status-warn", label: "Running" },
+};
+
 export function ActionCard({
   item,
   decision,
   onDecisionChange,
   onHoverSnippet,
   isHighlighted,
+  readOnly,
 }: ActionCardProps) {
   const [selectedTool, setSelectedTool] = useState<TargetTool>(
     decision?.override_tool || item.suggested_tool
@@ -46,8 +58,14 @@ export function ActionCard({
   const [isModalOpen, setIsModalOpen] = useState(false);
 
   const currentAction = decision?.action || "APPROVE";
-  const rejected = currentAction === "REJECT";
+  // In read-only mode the decision state is never seeded — derive the
+  // dismissed look from the persisted item status instead.
+  const rejected = readOnly ? item.status === "rejected" : currentAction === "REJECT";
   const tier = CONFIDENCE_TIER(item.confidence);
+  // Read-only mode shows the resolved tool: the operator's override if any,
+  // else the tool execution actually used (final_tool), else the suggestion.
+  const resolvedTool: TargetTool = decision?.override_tool || item.final_tool || item.suggested_tool;
+  const outcome = OUTCOME[item.status];
 
   const handleToolChange = (newTool: TargetTool) => {
     setSelectedTool(newTool);
@@ -114,19 +132,25 @@ export function ActionCard({
         }}
       >
         <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-          <select
-            value={selectedTool}
-            onChange={(e) => handleToolChange(e.target.value as TargetTool)}
-            className={`tag tag-tool tag-${selectedTool}`}
-            style={{ cursor: "pointer", outline: "none" }}
-            aria-label="Target tool"
-          >
-            {(Object.keys(TOOL_NAMES) as TargetTool[]).map((t) => (
-              <option key={t} value={t} style={{ color: "var(--text)", background: "var(--bg-surface)" }}>
-                {TOOL_NAMES[t]}
-              </option>
-            ))}
-          </select>
+          {readOnly ? (
+            <span className={`tag tag-tool tag-${resolvedTool}`}>
+              {TOOL_NAMES[resolvedTool]}
+            </span>
+          ) : (
+            <select
+              value={selectedTool}
+              onChange={(e) => handleToolChange(e.target.value as TargetTool)}
+              className={`tag tag-tool tag-${selectedTool}`}
+              style={{ cursor: "pointer", outline: "none" }}
+              aria-label="Target tool"
+            >
+              {(Object.keys(TOOL_NAMES) as TargetTool[]).map((t) => (
+                <option key={t} value={t} style={{ color: "var(--text)", background: "var(--bg-surface)" }}>
+                  {TOOL_NAMES[t]}
+                </option>
+              ))}
+            </select>
+          )}
           <span className="mono-label">
             {item.actionability_type.replace("_", " ").toUpperCase()}
           </span>
@@ -178,7 +202,7 @@ export function ActionCard({
         </span>
       </div>
 
-      {/* Row 4: actions */}
+      {/* Row 4: actions / outcome */}
       <div
         style={{
           display: "flex",
@@ -189,35 +213,69 @@ export function ActionCard({
           borderTop: "1px solid var(--line)",
         }}
       >
-        <button type="button" className="btn btn-ghost btn-sm" onClick={() => setIsModalOpen(true)}>
-          Edit payload
-        </button>
+        {readOnly ? (
+          <>
+            <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+              <span
+                className="tag"
+                style={{ display: "inline-flex", alignItems: "center", gap: "7px" }}
+              >
+                <span className={`status-dot ${outcome.className}`} />
+                {outcome.label}
+              </span>
+              {item.status === "rejected" && item.rejection_reason && (
+                <span className="dim" style={{ fontSize: "0.78rem" }}>
+                  {item.rejection_reason}
+                </span>
+              )}
+            </div>
+            {item.status === "executed" && item.external_url && (
+              <a
+                href={item.external_url}
+                target="_blank"
+                rel="noreferrer"
+                className="link-accent"
+                style={{ fontSize: "0.78rem", flexShrink: 0 }}
+              >
+                Open
+              </a>
+            )}
+          </>
+        ) : (
+          <>
+            <button type="button" className="btn btn-ghost btn-sm" onClick={() => setIsModalOpen(true)}>
+              Edit payload
+            </button>
 
-        <div style={{ display: "flex", gap: "8px" }}>
-          <button
-            type="button"
-            onClick={handleReject}
-            className={`btn btn-sm ${rejected ? "btn-danger" : "btn-secondary"}`}
-          >
-            {rejected ? "Dismissed" : "Dismiss"}
-          </button>
-          <button
-            type="button"
-            onClick={handleApprove}
-            className={`btn btn-sm ${!rejected ? "btn-success" : "btn-secondary"}`}
-          >
-            {!rejected ? "Approved" : "Approve"}
-          </button>
-        </div>
+            <div style={{ display: "flex", gap: "8px" }}>
+              <button
+                type="button"
+                onClick={handleReject}
+                className={`btn btn-sm ${rejected ? "btn-danger" : "btn-secondary"}`}
+              >
+                {rejected ? "Dismissed" : "Dismiss"}
+              </button>
+              <button
+                type="button"
+                onClick={handleApprove}
+                className={`btn btn-sm ${!rejected ? "btn-success" : "btn-secondary"}`}
+              >
+                {!rejected ? "Approved" : "Approve"}
+              </button>
+            </div>
+          </>
+        )}
       </div>
 
-      <PayloadModal
-        isOpen={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
-        item={item}
-        targetTool={selectedTool}
-        onSave={handleSavePayload}
-      />
+      {!readOnly && (
+        <PayloadModal
+          isOpen={isModalOpen}
+          onClose={() => setIsModalOpen(false)}
+          item={item}
+          targetTool={selectedTool}
+          onSave={handleSavePayload}
+        />
+      )}
     </div>
   );
 }

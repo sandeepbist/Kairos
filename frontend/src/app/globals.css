@@ -649,3 +649,78 @@ body {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* ============================================================
+   Responsive & a11y layer (appended)
+   Breakpoints: 900px / 760px / 640px
+   ============================================================ */
+
+/* ---- Navbar row: fixed height on wide screens, wraps gracefully on phones ---- */
+
+.nav-row {
+  height: 56px;
+}
+.nav-left {
+  gap: 28px;
+}
+.nav-summary {
+  color: var(--text-muted);
+  transition: color var(--fast) var(--ease);
+}
+.nav-summary[data-zero="true"] {
+  color: var(--text-dim);
+}
+.nav-summary:hover {
+  color: var(--text-secondary);
+}
+
+/* ---- ≤ 900px: tighten gutters, allow full-label connector strip to hide ---- */
+
+@media (max-width: 900px) {
+  .container {
+    padding: 0 16px;
+  }
+
+  /* Navbar row: let the two ends wrap on phones instead of overflowing */
+  .nav-row {
+    height: auto;
+    min-height: 56px;
+    padding: 8px 0;
+    flex-wrap: wrap;
+    row-gap: 8px;
+  }
+  .nav-left {
+    gap: 16px;
+  }
+
+  /* Utility: hide decorative strips on narrow viewports */
+  .hide-narrow {
+    display: none;
+  }
+}
+
+/* ---- ≤ 760px: slightly smaller display type ---- */
+
+@media (max-width: 760px) {
+  .h-display {
+    font-size: clamp(1.6rem, 6vw, 2.1rem);
+  }
+}
+
+/* ---- ≤ 640px: phone refinements ---- */
+
+@media (max-width: 640px) {
+  /* Source transcript: shrink, drop line numbers to reclaim width */
+  .source-line {
+    font-size: 0.72rem;
+    padding: 4px 6px;
+  }
+  .source-line-no {
+    display: none;
+  }
+
+  /* Panels inside main content never exceed the viewport column */
+  main .panel {
+    max-width: 100%;
+  }
+}
