@@ -244,7 +244,14 @@ To stop everything: the script traps Ctrl-C and tears down its processes;
 ## Configuration
 
 Local settings live in `.env` (copy from `.env.example`). Anything saved
-in the Settings UI is encrypted into PostgreSQL instead.
+in the Settings UI is encrypted into PostgreSQL instead. Operator tool
+targets — the Jira project key and site domain, Notion database,
+GitHub repo, Confluence space, ClickUp list, GitHub labels — resolve as
+**Settings UI value → `KAIROS_*` env var → unset**; extraction prefills
+payloads from them and never invents identifiers when they're missing,
+so an unconfigured tool surfaces as a review-time field, not a failed
+live call. The sandbox/live toggle is persisted the same way and
+survives restarts.
 
 | Variable | Required | Purpose |
 |:---|:---:|:---|
@@ -260,6 +267,7 @@ in the Settings UI is encrypted into PostgreSQL instead.
 | `GOOGLE_TASKS_ACCESS_TOKEN` | optional | Google Tasks (tasks-scoped OAuth token) |
 | `ASANA_API_TOKEN` | optional | Asana tasks (personal access token) |
 | `CLICKUP_API_TOKEN`, `CLICKUP_TARGET_LIST` | optional | ClickUp tasks (personal token + default list id) |
+| `KAIROS_JIRA_PROJECT_KEY`, `KAIROS_JIRA_DOMAIN`, `KAIROS_NOTION_DATABASE_ID`, `KAIROS_GITHUB_TARGET_REPO`, `KAIROS_GITHUB_LABELS`, `KAIROS_CONFLUENCE_SPACE_KEY`, `KAIROS_CLICKUP_TARGET_LIST`, `KAIROS_ASANA_WORKSPACE` | optional | Tool-target defaults, overridable per action in review; also settable in Settings → Tool targets |
 | `SLACK_APP_TOKEN`, `SLACK_BOT_TOKEN` | optional | Socket Mode bot; live Slack threads become batches |
 | `ENCRYPTION_KEY_PREVIOUS` | optional | Old vault key during zero-downtime rotation |
 | `WEBHOOK_ALLOW_PRIVATE_URLS` | optional | `true` lets webhooks target LAN receivers (link-local stays blocked) |

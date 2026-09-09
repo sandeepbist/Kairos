@@ -70,6 +70,9 @@ class GitHubConnector(BaseConnector):
     ) -> ExecutionResult:
         start_time = time.time()
         try:
+            from app.core.operator_settings import resolve_tool_targets
+
+            targets = await resolve_tool_targets()
             title = (
                 payload.get("title")
                 or payload.get("summary")
@@ -79,6 +82,7 @@ class GitHubConnector(BaseConnector):
             owner, repo = _parse_repo(
                 payload.get("repo")
                 or payload.get("repository")
+                or targets.get("github_repo")
                 or os.getenv("GITHUB_TARGET_REPO")
             )
 
@@ -90,14 +94,19 @@ class GitHubConnector(BaseConnector):
             if speaker:
                 body_parts.append("\n\n_Spoken by " + str(speaker) + "_")
             body = "\n".join(body_parts).strip()
-            labels = payload.get("labels") or ["kairos"]
+            # Labels default to the operator's configured set — no forced
+            # "kairos" tag on a stranger's repository.
+            configured_labels = [l.strip() for l in (targets.get("github_labels") or "").split(",") if l.strip()]
+            labels = payload.get("labels")
             if isinstance(labels, str):
                 # The review UI edits labels as a comma-separated string.
                 labels = [l.strip() for l in labels.split(",") if l.strip()]
+            elif not labels:
+                labels = configured_labels
 
             if sandbox_mode:
                 fake_num = _uuid.uuid4().hex[:5]
-                base = "https://github.com/" + (owner or "acme") + "/" + (repo or "planning")
+                base = "https://github.com/" + (owner or "sandbox") + "/" + (repo or "repo")
                 return ExecutionResult(
                     tool=self.tool_name,
                     status="success",

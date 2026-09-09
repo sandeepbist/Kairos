@@ -3,7 +3,7 @@ import os
 import re
 import uuid
 import logging
-from datetime import datetime, timezone, date, timedelta
+from datetime import date, timedelta
 from typing import Any, Literal
 from pydantic import BaseModel, Field, field_validator
 from app.config import settings
@@ -67,13 +67,24 @@ class ExtractedActionItemList(BaseModel):
 def deterministic_fallback_extractor(
     raw_text: str,
     source_type: str,
+    targets: dict[str, str] | None = None,
 ) -> list[dict[str, Any]]:
     """
     High-precision deterministic extraction engine for offline demos, sandbox mode, and testing.
     Parses speaker labels, direct address assignees, commitments, bugs, events, and notes.
+
+    ``targets`` is the resolved operator tool-target map. Payload fields that
+    would otherwise carry a fabricated demo default (project keys, database
+    ids, attendee emails, meeting times) are included only when the operator
+    configured them or the source text actually contains them — never invented.
     """
+    targets = targets or {}
     lines = [line.strip() for line in raw_text.split("\n") if line.strip()]
     extracted: list[dict[str, Any]] = []
+
+    def _emails_in(text: str) -> list[str]:
+        """Verbatim email addresses present in the source line, if any."""
+        return re.findall(r"[\w.+-]+@[\w-]+\.[\w.-]+", text)
 
     # Patterns for intent detection
     calendar_keywords = ["meeting", "schedule", "sync", "call", "review", "calendar", "invite", "zoom", "demo", "session", "planning session"]
@@ -275,9 +286,10 @@ def deterministic_fallback_extractor(
                     priority = "high"
 
             # 4. Generate Tool-Specific Payload
+            # Operator-configured targets only; anything the source does not
+            # state is left for review-time completion rather than invented.
             item_id = str(uuid.uuid4())
             tool_payload: dict[str, Any] = {}
-            now_utc = datetime.now(timezone.utc)
 
             if suggested_tool == "linear":
                 tool_payload = {
@@ -289,15 +301,18 @@ def deterministic_fallback_extractor(
                 tool_payload = {
                     "title": content[:200],
                     "description": f"Extracted from {source_type}: {line}",
-                    "repo": os.getenv("GITHUB_TARGET_REPO", ""),
-                    "labels": ["kairos"],
                 }
+                if targets.get("github_repo"):
+                    tool_payload["repo"] = targets["github_repo"]
+                if targets.get("github_labels"):
+                    tool_payload["labels"] = targets["github_labels"]
             elif suggested_tool == "confluence_page":
                 tool_payload = {
                     "title": content[:100],
                     "content": f"Context: {line}",
-                    "space_key": os.getenv("CONFLUENCE_SPACE_KEY", ""),
                 }
+                if targets.get("confluence_space_key"):
+                    tool_payload["space_key"] = targets["confluence_space_key"]
             elif suggested_tool == "google_tasks":
                 tool_payload = {
                     "title": content[:200],
@@ -308,14 +323,14 @@ def deterministic_fallback_extractor(
                 tool_payload = {
                     "name": content[:200],
                     "notes": f"Captured from: {line}",
-                    "due_date": (date.today() + timedelta(days=3)).isoformat(),
                 }
             elif suggested_tool == "clickup":
                 tool_payload = {
                     "name": content[:200],
                     "description": f"Captured from: {line}",
-                    "list_id": os.getenv("CLICKUP_TARGET_LIST", ""),
                 }
+                if targets.get("clickup_list_id"):
+                    tool_payload["list_id"] = targets["clickup_list_id"]
             elif suggested_tool == "todoist":
                 tool_payload = {
                     "content": content[:150],
@@ -329,27 +344,30 @@ def deterministic_fallback_extractor(
                 }
             elif suggested_tool == "jira":
                 tool_payload = {
-                    "project_key": "ENG",
                     "issue_type": "Bug" if "bug" in content_lower or "crash" in content_lower else "Task",
                     "summary": content[:80],
                     "description": f"Extracted from {source_type}: {line}",
                     "priority": priority.capitalize(),
                 }
+                if targets.get("jira_project_key"):
+                    tool_payload["project_key"] = targets["jira_project_key"]
             elif suggested_tool == "calendar":
-                start_dt = (now_utc + timedelta(days=2)).replace(hour=14, minute=0, second=0).isoformat()
-                end_dt = (now_utc + timedelta(days=2)).replace(hour=15, minute=0, second=0).isoformat()
+                # Times and attendees are review-time fields: the source
+                # rarely states a machine-readable slot, and a fabricated
+                # default would invite real people to a fake meeting.
                 tool_payload = {
                     "title": content[:60],
-                    "start_time": start_dt,
-                    "end_time": end_dt,
-                    "attendees": [f"{suggested_assignee.lower()}@company.com"] if suggested_assignee else [],
                 }
+                attendees = _emails_in(line)
+                if attendees:
+                    tool_payload["attendees"] = attendees
             elif suggested_tool == "notion":
                 tool_payload = {
-                    "database_id": "roadmap_db",
                     "title": content[:70],
                     "details": f"Context: {line}",
                 }
+                if targets.get("notion_database_id"):
+                    tool_payload["database_id"] = targets["notion_database_id"]
             else:
                 tool_payload = {
                     "title": content[:80],
@@ -559,6 +577,13 @@ async def extract_node(state: AgentState) -> dict[str, Any]:
 
     gemini_key, openai_key = await _get_vault_llm_credentials()
 
+    # Operator tool targets: payloads are prefilled with real configured
+    # values only. Extraction never invents project keys, databases, or
+    # times — unconfigured targets are completed during review.
+    from app.core.operator_settings import resolve_tool_targets
+
+    targets = await resolve_tool_targets()
+
     # Test mode or no configured key: deterministic extraction, nothing
     # leaves the machine. Long inputs run the deterministic extractor per
     # chunk so nothing is silently truncated at the old 3k-token guard.
@@ -566,7 +591,7 @@ async def extract_node(state: AgentState) -> dict[str, Any]:
         plain = raw_text
         if estimate_tokens(plain) > settings.CHUNK_TOKENS:
             chunks = chunk_transcript(plain, settings.CHUNK_TOKENS)
-            per_chunk = [deterministic_fallback_extractor(c, source_type) for c in chunks]
+            per_chunk = [deterministic_fallback_extractor(c, source_type, targets) for c in chunks]
             items, dropped = merge_extracted_chunks(per_chunk, chunks)
             if dropped:
                 logger.info(
@@ -574,8 +599,19 @@ async def extract_node(state: AgentState) -> dict[str, Any]:
                     len(dropped),
                 )
         else:
-            items = deterministic_fallback_extractor(plain, source_type)
+            items = deterministic_fallback_extractor(plain, source_type, targets)
         return {"extracted_items": items, "errors": errors}
+
+    # Operator-configured targets the model may prefill. Only stated facts
+    # go in — the model is explicitly barred from inventing identifiers.
+    configured = {k: v for k, v in targets.items() if v}
+    targets_guidance = ""
+    if configured:
+        formatted_targets = ", ".join(f"{k}={v}" for k, v in sorted(configured.items()))
+        targets_guidance = (
+            f"\nThe operator has configured these tool targets; prefill matching "
+            f"payload fields with them verbatim: {formatted_targets}.\n"
+        )
 
     system_prompt = (
         "You are Kairos, a production Ambient Action Extraction Agent. Your task is to extract real, actionable commitments "
@@ -599,7 +635,11 @@ async def extract_node(state: AgentState) -> dict[str, Any]:
         "- actionability_type: task, calendar_event, decision, or fyi\n"
         "- priority: low, medium, or high\n"
         "- confidence: float between 0.0 and 1.0\n"
-        "- tool_payload: tool parameters (e.g. summary/description for Jira, start_time/end_time for Calendar, title for Notion)"
+        "- tool_payload: tool parameters. Fill ONLY from the source text or the operator targets below — "
+        "NEVER invent project keys, database IDs, repository names, attendee email addresses, or meeting times. "
+        "If the source states an explicit date/time for a calendar event, include start_time/end_time in ISO 8601; "
+        "otherwise omit them and the operator will fill them during review. Attendee emails must appear verbatim in the source."
+        + targets_guidance
     )
 
     # Build the provider chain from vault-resolved keys (import-time settings
@@ -669,7 +709,7 @@ async def extract_node(state: AgentState) -> dict[str, Any]:
 
         # Whole chain failed or returned nothing: deterministic extraction.
         logger.warning("All LLM providers failed; using deterministic extractor.")
-        items = deterministic_fallback_extractor(raw_text, source_type)
+        items = deterministic_fallback_extractor(raw_text, source_type, targets)
         return {"extracted_items": items, "errors": errors}
 
     except Exception as e:
@@ -681,5 +721,5 @@ async def extract_node(state: AgentState) -> dict[str, Any]:
             safe_message,
         )
         errors.append(f"LLM extraction error: {safe_message}")
-        items = deterministic_fallback_extractor(raw_text, source_type)
+        items = deterministic_fallback_extractor(raw_text, source_type, targets)
         return {"extracted_items": items, "errors": errors}

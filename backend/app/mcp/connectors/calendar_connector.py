@@ -41,8 +41,8 @@ class CalendarConnector(BaseConnector):
     ) -> ExecutionResult:
         start_time = time.time()
         title = payload.get("title") or payload.get("summary") or "New Calendar Event"
-        start_time_iso = payload.get("start_time") or "2026-09-01T14:00:00Z"
-        end_time_iso = payload.get("end_time") or "2026-09-01T15:00:00Z"
+        start_time_iso = payload.get("start_time")
+        end_time_iso = payload.get("end_time")
         attendees = payload.get("attendees", [])
         reminder_minutes = payload.get("reminder_minutes_before", 30)
 
@@ -69,6 +69,14 @@ class CalendarConnector(BaseConnector):
             )
 
         # 2. Live Google Calendar API v3 Execution
+        if not start_time_iso or not end_time_iso:
+            # A live event needs real times from the conversation or the
+            # review edit — never a silently invented default slot.
+            raise ValueError(
+                "Calendar execution failed: start_time and end_time are "
+                "required. Fill them during review (Edit payload) and "
+                "re-approve."
+            )
         token = await self._get_auth_token()
         if not token:
             raise ValueError(

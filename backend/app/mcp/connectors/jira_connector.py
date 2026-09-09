@@ -24,19 +24,27 @@ class JiraConnector(BaseConnector):
         return bool(token and token.strip())
 
     async def _get_auth_credentials(self) -> tuple[str | None, str | None, str | None]:
-        """Retrieves decrypted OAuth token from Postgres or env fallback."""
+        """Retrieves decrypted OAuth token + operator-configured email/domain.
+
+        The vault stores the token; the account email and site domain are
+        operator settings (DB → env), not secrets, so they live in the
+        operator_settings store with JIRA_EMAIL/JIRA_DOMAIN env fallback.
+        """
+        from app.core.operator_settings import resolve_tool_targets
+
+        targets = await resolve_tool_targets()
         async with async_session_factory() as session:
             query = select(OAuthTokenModel).where(OAuthTokenModel.provider == "jira")
             res = await session.execute(query)
             record = res.scalar_one_or_none()
             if record and record.access_token_enc:
                 token = decrypt_token(record.access_token_enc)
-                return token, None, None
+                return token, targets.get("jira_email") or None, targets.get("jira_domain") or None
 
         # Environment variables fallback
         api_token = os.getenv("JIRA_API_TOKEN")
-        email = os.getenv("JIRA_EMAIL")
-        domain = os.getenv("JIRA_DOMAIN", "company.atlassian.net")
+        email = targets.get("jira_email") or os.getenv("JIRA_EMAIL")
+        domain = targets.get("jira_domain") or os.getenv("JIRA_DOMAIN")
         return api_token, email, domain
 
     async def execute(
@@ -45,7 +53,13 @@ class JiraConnector(BaseConnector):
         sandbox_mode: bool = True,
     ) -> ExecutionResult:
         start_time = time.time()
-        project_key = str(payload.get("project_key", "ENG")).upper()
+        # Operator-configured project key; no demo default — a live call
+        # without a real target must fail loudly, not file into "ENG".
+        from app.core.operator_settings import resolve_tool_targets
+
+        targets = await resolve_tool_targets()
+        default_project = (targets.get("jira_project_key") or "").strip()
+        project_key = str(payload.get("project_key") or default_project).upper()
         summary = payload.get("summary") or payload.get("title") or payload.get("description") or "New Jira Issue"
         description = payload.get("description", summary)
         issue_type = payload.get("issue_type", "Task")
@@ -54,8 +68,8 @@ class JiraConnector(BaseConnector):
         # 1. Sandbox Emulation Mode
         if sandbox_mode:
             issue_num = random.randint(100, 999)
-            issue_key = f"{project_key}-{issue_num}"
-            simulated_url = f"https://company.atlassian.net/browse/{issue_key}"
+            issue_key = f"{project_key or 'SANDBOX'}-{issue_num}"
+            simulated_url = f"https://{targets.get('jira_domain') or 'sandbox.invalid'}/browse/{issue_key}"
             latency_ms = int((time.time() - start_time) * 1000) + 60
 
             return ExecutionResult(
@@ -80,18 +94,30 @@ class JiraConnector(BaseConnector):
         from .mcp_transport import execute_via_mcp
 
         token, email, domain = await self._get_auth_credentials()
+
+        if not project_key:
+            raise ValueError(
+                "Jira execution failed: no project key. Set one in the "
+                "action payload or Settings → Tool targets."
+            )
+
         mcp_result = await execute_via_mcp("jira", token or "", payload) if token else None
         if mcp_result and (mcp_result.get("url") or mcp_result.get("key")):
             return ExecutionResult(
                 tool=self.tool_name,
                 status="success",
                 external_url=mcp_result.get("url")
-                or f"https://{domain or 'company.atlassian.net'}/browse/{mcp_result.get('key')}",
+                or (f"https://{domain}/browse/{mcp_result.get('key')}" if domain else mcp_result.get("key")),
                 latency_ms=int((time.time() - start_time) * 1000),
                 raw_response=mcp_result,
             )
-        target_domain = domain or "company.atlassian.net"
-        base_url = f"https://{target_domain}"
+        if not domain:
+            raise ValueError(
+                "Jira execution failed: no site domain configured. Set your "
+                "<site>.atlassian.net domain in Settings → Tool targets or the "
+                "JIRA_DOMAIN env var."
+            )
+        base_url = f"https://{domain}"
 
         if not token:
             # If live mode requested but no token configured, provide clear error

@@ -41,7 +41,17 @@ class NotionConnector(BaseConnector):
     ) -> ExecutionResult:
         start_time = time.time()
         title = payload.get("title") or payload.get("summary") or payload.get("description") or "Untitled Notion Page"
-        database_id = payload.get("database_id") or os.getenv("NOTION_DATABASE_ID", "roadmap_db")
+        # Operator-configured database; no demo sentinel. Empty means
+        # "search accessible pages at execution time" below.
+        from app.core.operator_settings import resolve_tool_targets
+
+        targets = await resolve_tool_targets()
+        database_id = (
+            payload.get("database_id")
+            or targets.get("notion_database_id")
+            or os.getenv("NOTION_DATABASE_ID")
+            or ""
+        ).strip()
         details = payload.get("details") or payload.get("description", "")
 
         # 1. Sandbox Emulation Mode
@@ -95,8 +105,9 @@ class NotionConnector(BaseConnector):
             async with connector_http_client(timeout=15.0) as client:
                 target_parent: dict[str, str] | None = None
 
-                # Check if explicit database_id is provided
-                if database_id and database_id != "roadmap_db":
+                # An explicit database id targets that database; anything
+                # else searches accessible pages for the integration.
+                if database_id:
                     target_parent = {"database_id": database_id}
                 else:
                     # Dynamically search accessible Notion databases/pages for the integration

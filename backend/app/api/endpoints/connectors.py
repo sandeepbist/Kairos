@@ -8,6 +8,10 @@ from app.config import settings
 from app.db.session import get_db
 from app.db.models import OAuthTokenModel
 from app.core.security import encrypt_token
+from app.core.operator_settings import (
+    load_operator_settings,
+    save_operator_setting,
+)
 from app.mcp.client_manager import mcp_client_manager
 
 router = APIRouter(prefix="/connectors", tags=["connectors"])
@@ -24,12 +28,66 @@ class SandboxToggleRequest(BaseModel):
     sandbox_mode: bool
 
 
+class ToolTargetsRequest(BaseModel):
+    """Operator tool targets. All optional; empty string clears a key."""
+    jira_project_key: str | None = Field(default=None, max_length=50)
+    jira_domain: str | None = Field(default=None, max_length=200)
+    jira_email: str | None = Field(default=None, max_length=320)
+    notion_database_id: str | None = Field(default=None, max_length=100)
+    github_repo: str | None = Field(default=None, max_length=200)
+    github_labels: str | None = Field(default=None, max_length=200)
+    confluence_space_key: str | None = Field(default=None, max_length=100)
+    clickup_list_id: str | None = Field(default=None, max_length=100)
+    asana_workspace: str | None = Field(default=None, max_length=100)
+
+
+@router.get("/settings", response_model=dict[str, Any])
+async def get_operator_settings():
+    """Resolved operator settings (DB → env → empty) for the Settings UI."""
+    return await load_operator_settings()
+
+
+@router.put("/settings", response_model=dict[str, Any])
+async def put_operator_settings(
+    request: ToolTargetsRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """Persists tool targets to the operator_settings store.
+
+    Only provided fields are written; empty strings clear a key so the
+    env fallback (if any) takes over again.
+    """
+    field_to_key = {
+        "jira_project_key": "tool_targets.jira_project_key",
+        "jira_domain": "tool_targets.jira_domain",
+        "jira_email": "tool_targets.jira_email",
+        "notion_database_id": "tool_targets.notion_database_id",
+        "github_repo": "tool_targets.github_repo",
+        "github_labels": "tool_targets.github_labels",
+        "confluence_space_key": "tool_targets.confluence_space_key",
+        "clickup_list_id": "tool_targets.clickup_list_id",
+        "asana_workspace": "tool_targets.asana_workspace",
+    }
+    for field, key in field_to_key.items():
+        value = getattr(request, field)
+        if value is not None:
+            await save_operator_setting(key, value, db)
+    await db.commit()
+    return await load_operator_settings()
+
+
 @router.get("/status", response_model=dict[str, Any])
 async def get_connectors_status(
     db: AsyncSession = Depends(get_db),
 ):
     """Returns connector health, sandbox flags, and configured OAuth connections."""
+    from app.core.operator_settings import get_operator_setting
+
     mcp_statuses = await mcp_client_manager.get_connectors_status()
+    resolved_sandbox = bool(await get_operator_setting(
+        "execution.sandbox_mode", default=settings.SANDBOX_MODE
+    ))
+    settings.SANDBOX_MODE = resolved_sandbox
 
     # Query configured OAuth tokens
     tokens_query = select(OAuthTokenModel.provider)
@@ -138,13 +196,17 @@ async def delete_oauth_token(
 @router.post("/sandbox-toggle", response_model=dict[str, Any])
 async def toggle_sandbox_mode(
     request: SandboxToggleRequest,
+    db: AsyncSession = Depends(get_db),
 ):
     """Toggles Sandbox / Mock Mode for subsequently ingested batches.
 
-    The mode is captured per batch at ingest time and carried through the
-    workflow to execution, so it applies even though the Temporal worker
-    runs as a separate process.
+    The mode is persisted in the operator_settings store (survives
+    restarts, visible to the Temporal worker process) and captured per
+    batch at ingest time, so it applies even though the worker runs
+    separately. Env var SANDBOX_MODE seeds the initial value.
     """
+    await save_operator_setting("execution.sandbox_mode", request.sandbox_mode, db)
+    await db.commit()
     settings.SANDBOX_MODE = request.sandbox_mode
     return {
         "sandbox_mode": settings.SANDBOX_MODE,

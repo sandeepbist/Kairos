@@ -59,7 +59,10 @@ export default function IngestPage() {
 
   const wordCount = rawText.trim() ? rawText.trim().split(/\s+/).length : 0;
   const approxTokens = Math.round(wordCount * 1.33);
-  const overLimit = approxTokens > 3000;
+  // Mirrors backend bounds: 50k tokens single-pass, speaker-aware
+  // map-reduce above it, 50k-character truncation hard stop.
+  const TOKEN_LIMIT = 50_000;
+  const overLimit = approxTokens > TOKEN_LIMIT;
 
   const handleLoadPreset = (key: keyof typeof SAMPLE_PRESETS) => {
     setRawText(SAMPLE_PRESETS[key].text);
@@ -184,9 +187,9 @@ export default function IngestPage() {
           >
             <span>{wordCount} WORDS</span>
             <span style={{ color: overLimit ? "var(--err)" : undefined }}>
-              ~{approxTokens} TOKENS
+              ~{approxTokens.toLocaleString()} TOKENS
             </span>
-            <span>LIMIT 3000</span>
+            <span>{overLimit ? "OVER LIMIT" : "SINGLE-PASS ≤ 50K"}</span>
           </div>
 
           <button

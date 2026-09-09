@@ -56,11 +56,18 @@ class ConfluenceConnector(BaseConnector):
                 or payload.get("description")
                 or ""
             )
-            space_key = payload.get("space_key") or payload.get("space_id")
+            from app.core.operator_settings import resolve_tool_targets
+
+            targets = await resolve_tool_targets()
+            space_key = (
+                payload.get("space_key")
+                or payload.get("space_id")
+                or targets.get("confluence_space_key")
+            )
 
             if sandbox_mode:
                 fake_id = _uuid.uuid4().hex[:8]
-                space = space_key or "TEAM"
+                space = space_key or "UNSET"
                 return ExecutionResult(
                     tool=self.tool_name,
                     status="success",

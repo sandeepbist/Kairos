@@ -54,8 +54,14 @@ class ClickUpConnector(BaseConnector):
             priority = _PRIORITY.get(
                 str(payload.get("priority", "medium")).lower(), 3
             )
-            list_id = payload.get("list_id") or payload.get("list") or os.getenv(
-                "CLICKUP_TARGET_LIST"
+            from app.core.operator_settings import resolve_tool_targets
+
+            targets = await resolve_tool_targets()
+            list_id = (
+                payload.get("list_id")
+                or payload.get("list")
+                or targets.get("clickup_list_id")
+                or os.getenv("CLICKUP_TARGET_LIST")
             )
 
             if sandbox_mode:

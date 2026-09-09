@@ -112,6 +112,33 @@ export async function deleteOAuthToken(
   return request(`/api/connectors/oauth/${provider}`, { method: "DELETE" });
 }
 
+// ── Operator tool targets (Settings) ────────────────────────────────
+
+export interface ToolTargets {
+  jira_project_key?: string;
+  jira_domain?: string;
+  jira_email?: string;
+  notion_database_id?: string;
+  github_repo?: string;
+  github_labels?: string;
+  confluence_space_key?: string;
+  clickup_list_id?: string;
+  asana_workspace?: string;
+}
+
+export async function getOperatorSettings(): Promise<Record<string, string | boolean>> {
+  return request("/api/connectors/settings", { cache: "no-store" });
+}
+
+export async function saveToolTargets(
+  targets: ToolTargets
+): Promise<Record<string, string | boolean>> {
+  return request("/api/connectors/settings", {
+    method: "PUT",
+    body: JSON.stringify(targets),
+  });
+}
+
 // ── Outbound webhooks (Standard Webhooks) ────────────────────────────
 
 export async function listWebhooks(): Promise<WebhookEndpoint[]> {

@@ -1,12 +1,76 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import { getConnectorsStatus, toggleSandbox, saveOAuthToken, deleteOAuthToken } from "@/lib/api";
+import { getConnectorsStatus, toggleSandbox, saveOAuthToken, deleteOAuthToken, getOperatorSettings, saveToolTargets } from "@/lib/api";
 import { errorMessage } from "@/lib/errors";
 import { ConnectorsStatusResponse, TargetTool } from "@/lib/types";
 import { WebhooksPanel } from "@/components/WebhooksPanel";
 
 type Notice = { text: string; type: "success" | "error" | "info" } | null;
+
+interface TargetField {
+  key: string;
+  label: string;
+  hint: string;
+  placeholder: string;
+}
+
+const TARGET_FIELDS: TargetField[] = [
+  {
+    key: "jira_project_key",
+    label: "Jira project key",
+    hint: "Issues file into this project unless an action names another.",
+    placeholder: "e.g. SUP",
+  },
+  {
+    key: "jira_domain",
+    label: "Jira site domain",
+    hint: "Your <site>.atlassian.net — required for live issue creation.",
+    placeholder: "yourcompany.atlassian.net",
+  },
+  {
+    key: "jira_email",
+    label: "Jira account email",
+    hint: "Paired with the Atlassian API token for Basic auth.",
+    placeholder: "you@yourcompany.com",
+  },
+  {
+    key: "notion_database_id",
+    label: "Notion database ID",
+    hint: "Pages land in this database. Leave empty to let Kairos search accessible pages at execution time.",
+    placeholder: "32-char database ID from the Notion URL",
+  },
+  {
+    key: "github_repo",
+    label: "GitHub repository",
+    hint: "owner/name — used when an action doesn't name a repo.",
+    placeholder: "acme/planning",
+  },
+  {
+    key: "github_labels",
+    label: "GitHub labels",
+    hint: "Comma-separated labels added to new issues. Empty adds none.",
+    placeholder: "meeting, follow-up",
+  },
+  {
+    key: "confluence_space_key",
+    label: "Confluence space key",
+    hint: "Pages are created in this space. Uses the Jira credential.",
+    placeholder: "TEAM",
+  },
+  {
+    key: "clickup_list_id",
+    label: "ClickUp list ID",
+    hint: "Tasks land in this list (the ID from the list URL).",
+    placeholder: "from the ClickUp list URL",
+  },
+  {
+    key: "asana_workspace",
+    label: "Asana workspace",
+    hint: "Optional — empty resolves your first workspace automatically.",
+    placeholder: "workspace gid or name",
+  },
+];
 
 interface CredentialConfig {
   provider: string;
@@ -53,6 +117,9 @@ export default function SettingsPage() {
   });
   const [savingProvider, setSavingProvider] = useState<string | null>(null);
 
+  const [targetValues, setTargetValues] = useState<Record<string, string>>({});
+  const [savingTargets, setSavingTargets] = useState(false);
+
   const loadStatus = () => {
     getConnectorsStatus()
       .then((data) => {
@@ -64,7 +131,31 @@ export default function SettingsPage() {
 
   useEffect(() => {
     loadStatus();
+    getOperatorSettings()
+      .then((data) => {
+        const initial: Record<string, string> = {};
+        for (const [key, value] of Object.entries(data)) {
+          if (key.startsWith("tool_targets.")) {
+            initial[key.replace("tool_targets.", "")] = typeof value === "string" ? value : "";
+          }
+        }
+        setTargetValues(initial);
+      })
+      .catch(() => {});
   }, []);
+
+  const handleSaveTargets = async () => {
+    setSavingTargets(true);
+    setMessage(null);
+    try {
+      await saveToolTargets(targetValues);
+      setMessage({ text: "Tool targets saved — new extractions prefill from these.", type: "success" });
+    } catch (err) {
+      setMessage({ text: errorMessage(err, "Failed to save tool targets"), type: "error" });
+    } finally {
+      setSavingTargets(false);
+    }
+  };
 
   const handleToggleSandbox = async () => {
     setSaving(true);
@@ -166,7 +257,7 @@ export default function SettingsPage() {
     {
       provider: "jira",
       label: "Jira",
-      hint: "Atlassian API token, paired with your account email.",
+      hint: "Atlassian API token. Pair it with your account email and site domain in Tool targets above.",
       linkLabel: "Atlassian security settings",
       linkUrl: "https://id.atlassian.com/manage-profile/security/api-tokens",
       placeholder: "Atlassian API token",
@@ -207,7 +298,7 @@ export default function SettingsPage() {
     {
       provider: "github",
       label: "GitHub",
-      hint: "Fine-grained PAT with Issues: write on your target repo. Default repo set via GITHUB_TARGET_REPO, or per action.",
+      hint: "Fine-grained PAT with Issues: write. Default repo set in Tool targets, or per action.",
       linkLabel: "github.com/settings/personal-access-tokens",
       linkUrl: "https://github.com/settings/personal-access-tokens/new",
       placeholder: "GitHub PAT (github_pat_…)",
@@ -239,7 +330,7 @@ export default function SettingsPage() {
     {
       provider: "clickup",
       label: "ClickUp",
-      hint: "Personal token from ClickUp settings (Apps). Default target list via CLICKUP_TARGET_LIST, or per action.",
+      hint: "Personal token from ClickUp settings (Apps). Default target list in Tool targets, or per action.",
       linkLabel: "ClickUp settings — Apps",
       linkUrl: "https://app.clickup.com/settings/apps",
       placeholder: "ClickUp token (pk_…)",
@@ -311,6 +402,58 @@ export default function SettingsPage() {
           >
             <span className="switch-thumb" />
           </button>
+        </div>
+      </section>
+
+      {/* Tool targets */}
+      <section className="rise rise-2" style={{ marginBottom: "28px" }}>
+        <p className="mono-label" style={{ marginBottom: "14px" }}>
+          TOOL TARGETS — WHERE ACTIONS LAND BY DEFAULT
+        </p>
+        <div className="panel" style={{ padding: "18px 22px" }}>
+          <p className="dim" style={{ fontSize: "0.8rem", marginBottom: "16px", lineHeight: 1.5 }}>
+            Extraction never invents project keys, databases, or meeting times — it fills
+            payloads from these targets and what the conversation actually says. Anything
+            missing waits for you in review. Environment variables with the same purpose
+            still work; values saved here take precedence.
+          </p>
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))",
+              gap: "14px",
+              marginBottom: "16px",
+            }}
+          >
+            {TARGET_FIELDS.map((field) => (
+              <div key={field.key}>
+                <label className="field-label">{field.label}</label>
+                <input
+                  type="text"
+                  className="input mono"
+                  placeholder={field.placeholder}
+                  value={targetValues[field.key] ?? ""}
+                  onChange={(e) =>
+                    setTargetValues((prev) => ({ ...prev, [field.key]: e.target.value }))
+                  }
+                  aria-label={field.label}
+                />
+                <p className="dim" style={{ fontSize: "0.72rem", marginTop: "5px", lineHeight: 1.45 }}>
+                  {field.hint}
+                </p>
+              </div>
+            ))}
+          </div>
+          <div style={{ display: "flex", justifyContent: "flex-end" }}>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={handleSaveTargets}
+              disabled={savingTargets}
+            >
+              {savingTargets ? "Saving…" : "Save targets"}
+            </button>
+          </div>
         </div>
       </section>
 

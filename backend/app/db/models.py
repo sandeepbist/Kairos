@@ -236,3 +236,18 @@ class WebhookDeliveryModel(Base):
     __table_args__ = (
         Index("ix_webhook_deliveries_endpoint_created", "endpoint_id", "created_at"),
     )
+
+
+class OperatorSettingsModel(Base):
+    """Operator-settable configuration: tool targets and execution mode.
+
+    One row per key; values are JSON so each key can grow its own shape
+    without migrations. Resolution is always DB value → env var →
+    default (see app/core/operator_settings.py) so deployments that
+    configure purely via env work unchanged.
+    """
+    __tablename__ = "operator_settings"
+
+    key = Column(String(50), primary_key=True)
+    value = Column(JSON, nullable=False)
+    updated_at = Column(DateTime(timezone=True), default=utc_now, onupdate=utc_now, nullable=False)

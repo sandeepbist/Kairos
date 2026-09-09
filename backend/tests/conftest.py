@@ -49,6 +49,7 @@ def setup_and_teardown_test_db():
                     "action_items",
                     "batches",
                     "oauth_tokens",
+                    "operator_settings",
                     "routing_feedback",
                     "task_ledger_tasks",
                     "webhook_deliveries",

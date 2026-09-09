@@ -115,8 +115,9 @@ export function PayloadModal({
                 <label className="field-label">Project key</label>
                 <input
                   className="input mono"
-                  value={str("project_key", "ENG")}
+                  value={str("project_key")}
                   onChange={(e) => handleChange("project_key", e.target.value)}
+                  placeholder="from Settings · Tool targets"
                 />
               </div>
               <div>
@@ -167,23 +168,27 @@ export function PayloadModal({
                 />
               </div>
               <div>
-                <label className="field-label">Start time (ISO 8601)</label>
+                <label className="field-label">Start time</label>
                 <input
                   className="input mono"
+                  type="datetime-local"
                   value={str("start_time")}
                   onChange={(e) => handleChange("start_time", e.target.value)}
-                  placeholder="2026-09-10T14:00:00Z"
                 />
               </div>
               <div>
-                <label className="field-label">End time (ISO 8601)</label>
+                <label className="field-label">End time</label>
                 <input
                   className="input mono"
+                  type="datetime-local"
                   value={str("end_time")}
                   onChange={(e) => handleChange("end_time", e.target.value)}
-                  placeholder="2026-09-10T15:00:00Z"
                 />
               </div>
+              <p className="dim" style={{ fontSize: "0.72rem", lineHeight: 1.45 }}>
+                Required before execution — Kairos never invents a meeting slot. The source
+                quote is shown on the left.
+              </p>
               <div>
                 <label className="field-label">Attendee email</label>
                 <input
@@ -205,8 +210,9 @@ export function PayloadModal({
                 <label className="field-label">Database ID</label>
                 <input
                   className="input mono"
-                  value={str("database_id", "roadmap_db")}
+                  value={str("database_id")}
                   onChange={(e) => handleChange("database_id", e.target.value)}
+                  placeholder="from Settings · Tool targets (empty = search)"
                 />
               </div>
               <div>

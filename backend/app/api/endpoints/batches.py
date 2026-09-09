@@ -34,6 +34,14 @@ async def create_and_start_batch(
     batch_id = str(uuid.uuid4())
     workflow_id = f"batch-wf-{batch_id}"
 
+    # Sandbox mode is operator state (DB → env), not per-request config;
+    # a fresh process must not silently revive live mode after a toggle.
+    from app.core.operator_settings import get_operator_setting
+
+    sandbox_mode = bool(await get_operator_setting(
+        "execution.sandbox_mode", default=settings.SANDBOX_MODE
+    ))
+
     batch = BatchModel(
         id=batch_id,
         source_type=source_type,
@@ -45,7 +53,7 @@ async def create_and_start_batch(
     await db.commit()
 
     return await _dispatch_workflow_and_respond(
-        batch, batch_id, workflow_id, raw_text, source_type, db
+        batch, batch_id, workflow_id, raw_text, source_type, sandbox_mode, db
     )
 
 
@@ -64,6 +72,7 @@ async def _dispatch_workflow_and_respond(
     workflow_id: str,
     raw_text: str,
     source_type: str,
+    sandbox_mode: bool,
     db: AsyncSession,
 ) -> dict[str, Any]:
     """Starts the extraction workflow for an existing batch row."""
@@ -71,7 +80,7 @@ async def _dispatch_workflow_and_respond(
         client = await get_temporal_client()
         await client.start_workflow(
             ProcessBatchWorkflow.run,
-            args=[batch_id, raw_text, source_type, settings.SANDBOX_MODE],
+            args=[batch_id, raw_text, source_type, sandbox_mode],
             id=workflow_id,
             task_queue=settings.TEMPORAL_TASK_QUEUE,
         )
