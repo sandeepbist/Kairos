@@ -58,6 +58,7 @@ async def get_execution_history(
                     "external_url": log.external_url,
                     "item_description": log.item_description,
                     "latency_ms": log.latency_ms,
+                    "error": log.error,
                     "executed_at": log.executed_at.isoformat() if log.executed_at else None,
                 }
                 for log in logs

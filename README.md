@@ -38,11 +38,12 @@ human approves every single item.
 6. [Configuration](#configuration)
 7. [Testing](#testing)
 8. [Production deployment](#production-deployment)
-9. [Deployment scope](#deployment-scope)
-10. [Repository layout](#repository-layout)
-11. [Security posture](#security-posture)
-12. [Contributing](#contributing)
-13. [License](#license)
+9. [Deployment & releases](#deployment--releases)
+10. [Deployment scope](#deployment-scope)
+11. [Repository layout](#repository-layout)
+12. [Security posture](#security-posture)
+13. [Contributing](#contributing)
+14. [License](#license)
 
 ## Screenshots
 
@@ -342,6 +343,69 @@ injects the API key server-side: browsers never hold it, and the backend is
 unreachable from outside the Docker network.
 
 </details>
+
+## Deployment & releases
+
+Three ways to run the stack, plus the release process behind the
+published images.
+
+**Local compose (dev).** `./scripts/start.sh` or
+`docker compose -f docker-compose.dev.yml up -d` — PostgreSQL on 5435,
+Temporal on 7234 (UI 8234), app processes on your host.
+
+**Build from source (production).** What
+[docker-compose.prod.yml](docker-compose.prod.yml) does — builds both
+images locally, so you can pass `NEXT_PUBLIC_*` build args to the
+frontend:
+
+```bash
+cp .env.example .env    # fill in POSTGRES_PASSWORD, API_KEY, ENCRYPTION_KEY
+docker compose -f docker-compose.prod.yml --env-file .env up -d --build
+```
+
+**Pull prebuilt images from GHCR (channel deploy).**
+[docker-compose.ghcr.yml](docker-compose.ghcr.yml) is the same stack but
+pulls from ghcr.io instead of building. Pick a release channel via
+`KAIROS_VERSION`:
+
+| `KAIROS_VERSION` | Channel | What you get |
+|:---|:---|:---|
+| `edge` (default) | edge | image from every push to `main`, plus immutable `sha-<short>` tags |
+| `stable` | stable | latest `vX.Y.Z` tag; also tagged `latest` |
+| `vX.Y.Z` | pinned | an exact release |
+
+```bash
+KAIROS_VERSION=stable \
+docker compose -f docker-compose.ghcr.yml --env-file .env up -d
+```
+
+Images live at `ghcr.io/sandeepbist/kairos-backend` and
+`ghcr.io/sandeepbist/kairos-frontend` (both built with provenance and
+SBOM attestations). One caveat: `NEXT_PUBLIC_*` URLs are inlined into the
+frontend bundle at image build time, and published images build with
+empty defaults — operators needing custom Temporal UI or API docs URLs
+build the frontend locally via docker-compose.prod.yml.
+
+**Cutting a release.** [scripts/release.sh](scripts/release.sh) does the
+whole cut; [backend/VERSION](backend/VERSION) is the source of truth:
+
+```bash
+scripts/release.sh patch        # or minor | major | an explicit X.Y.Z
+                               # --dry-run prints the plan
+git push origin main --follow-tags
+```
+
+Pushing the tag triggers two workflows: `publish.yml` builds the images
+tagged `vX.Y.Z`, `stable`, and `latest`; `release.yml` verifies the tag
+matches `backend/VERSION` (a hand-pushed tag with a mismatched VERSION
+fails with that message) and opens the GitHub Release with
+auto-generated notes. See [CHANGELOG.md](CHANGELOG.md) for release
+history.
+
+**Repo settings to set by hand** (workflows cannot configure their own
+protection): branch protection on `main` requiring the CI and Security
+workflows, and a tag protection rule on `v*` so only maintainers can
+push release tags.
 
 ## Backup, restore, and key rotation
 

@@ -3,7 +3,7 @@
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { getConnectorsStatus } from "@/lib/api";
+import { getBatchesSummary, getConnectorsStatus } from "@/lib/api";
 import { ConnectorsStatusResponse, TargetTool } from "@/lib/types";
 
 const TOOL_LABELS: Record<TargetTool, string> = {
@@ -35,16 +35,24 @@ const isConnected = (
 export function Navbar() {
   const pathname = usePathname();
   const [status, setStatus] = useState<ConnectorsStatusResponse | null>(null);
+  const [awaiting, setAwaiting] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
 
     const fetchStatus = () => {
+      // One combined refresh: connector status plus the pending-approvals
+      // count for the badge. Failures stay silent — both are decorative.
       getConnectorsStatus()
         .then((s) => {
           if (!cancelled) setStatus(s);
         })
         .catch(() => {}); // status is decorative — failures stay silent
+      getBatchesSummary()
+        .then((summary) => {
+          if (!cancelled) setAwaiting(summary.awaiting_approval);
+        })
+        .catch(() => {});
     };
 
     // (a) on mount and on every route change (covers navigating to /settings,
@@ -83,6 +91,7 @@ export function Navbar() {
   const navLinks = [
     { href: "/", label: "Ingest" },
     { href: "/history", label: "History" },
+    { href: "/ledger", label: "Ledger" },
     { href: "/settings", label: "Settings" },
   ];
 
@@ -180,6 +189,25 @@ export function Navbar() {
             />
             {connectedCount}/12 CONNECTED
           </Link>
+
+          {awaiting > 0 && (
+            <Link
+              href="/history"
+              className="mono-label"
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "6px",
+                textDecoration: "none",
+                whiteSpace: "nowrap",
+                color: "var(--warn)",
+              }}
+              title={`${awaiting} batch${awaiting === 1 ? "" : "es"} awaiting approval — review in History`}
+            >
+              <span className="status-dot status-warn" />
+              {awaiting} AWAITING
+            </Link>
+          )}
 
           <span
             style={{

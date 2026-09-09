@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useRef, useState, use } from "react";
+import React, { useEffect, useMemo, useRef, useState, use } from "react";
 import { useRouter } from "next/navigation";
 import { getBatch, approveBatch } from "@/lib/api";
 import { errorMessage } from "@/lib/errors";
@@ -24,9 +24,20 @@ export default function ReviewPage({
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [progress, setProgress] = useState<string | null>(null);
+  // Keyboard focus index into `items` (review mode only), plus a per-item
+  // counter used to ask a card to open its payload editor.
+  const [focusedIdx, setFocusedIdx] = useState<number | null>(null);
+  const [editSignals, setEditSignals] = useState<Record<string, number>>({});
 
   const fetchStatusRef = useRef<() => void>(() => {});
   const batchStatusRef = useRef<string | null>(null);
+  const cardRefs = useRef<Record<string, HTMLDivElement | null>>({});
+
+  // Hoisted above the effects: the keyboard effect (below) and the outcome
+  // counts (below the loading gate) share them. Memoized so the keyboard
+  // effect's deps stay referentially stable.
+  const items = useMemo(() => batch?.items ?? [], [batch]);
+  const isReviewable = batch?.status === "awaiting_approval";
 
   const fetchStatus = async () => {
     try {
@@ -78,25 +89,139 @@ export default function ReviewPage({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [batchId]);
 
-  // Live progress via SSE while the batch is processing (falls back to
-  // polling silently if the stream is unavailable).
+  // Live progress via SSE while the batch is processing. The server
+  // deliberately closes idle/terminal streams, so a dropped connection is
+  // normal: reconnect with capped backoff and stop once the batch is
+  // terminal. Polling remains the silent safety net; no UI is shown for
+  // connection state.
   useEffect(() => {
     if (!batchId) return;
-    const source = new EventSource(`/api/batches/${batchId}/events`);
-    source.onmessage = (msg) => {
-      try {
-        const event = JSON.parse(msg.data) as { type: string; message: string };
-        setProgress(event.message || event.type);
-        if (event.type === "awaiting_review") {
-          fetchStatusRef.current();
+
+    const TERMINAL_STATUSES = ["completed", "failed", "expired"];
+    let source: EventSource | null = null;
+    let retryTimer: ReturnType<typeof setTimeout> | null = null;
+    let backoffMs = 1000;
+    const MAX_BACKOFF_MS = 10000;
+
+    const stop = () => {
+      if (retryTimer !== null) {
+        clearTimeout(retryTimer);
+        retryTimer = null;
+      }
+      source?.close();
+      source = null;
+    };
+
+    const connect = () => {
+      if (TERMINAL_STATUSES.includes(batchStatusRef.current ?? "")) return;
+      source = new EventSource(`/api/batches/${batchId}/events`);
+      source.onmessage = (msg) => {
+        try {
+          const event = JSON.parse(msg.data) as { type: string; message: string };
+          setProgress(event.message || event.type);
+          if (event.type === "awaiting_review") {
+            fetchStatusRef.current();
+          }
+        } catch {
+          // malformed event: ignore, polling covers us
         }
-      } catch {
-        // malformed event: ignore, polling covers us
+        // A delivered message proves the stream is healthy.
+        backoffMs = 1000;
+      };
+      source.onerror = () => {
+        // Schedule a fresh EventSource (the old one is dead after error).
+        source?.close();
+        source = null;
+        if (retryTimer !== null) clearTimeout(retryTimer);
+        retryTimer = setTimeout(() => {
+          retryTimer = null;
+          if (TERMINAL_STATUSES.includes(batchStatusRef.current ?? "")) return;
+          backoffMs = Math.min(backoffMs * 2, MAX_BACKOFF_MS);
+          connect();
+        }, backoffMs);
+      };
+    };
+
+    connect();
+
+    return stop;
+  }, [batchId]);
+
+  // Keyboard shortcuts, review mode only: j/k move focus between cards,
+  // Enter/a approve the focused card, x/d dismiss it, e opens its payload
+  // editor. Guards: no shortcuts while a dialog is open, while typing in a
+  // form control, on held-repeat, or with modifier keys.
+  useEffect(() => {
+    if (!isReviewable) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.metaKey || e.ctrlKey || e.altKey || e.repeat) return;
+      const target = e.target as HTMLElement | null;
+      if (
+        target &&
+        (target.isContentEditable ||
+          ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName))
+      ) {
+        return;
+      }
+      // PayloadModal (and any future dialog) renders role="dialog"; while a
+      // dialog owns the keyboard, page shortcuts stand down. (Native
+      // window.confirm blocks keydown entirely, so it needs no guard.)
+      if (document.querySelector('[role="dialog"]')) return;
+      if (items.length === 0) return;
+
+      const key = e.key.toLowerCase();
+
+      if (key === "j" || key === "k") {
+        e.preventDefault();
+        const current = focusedIdx ?? -1;
+        // First press lands on the first card; further presses clamp at the
+        // ends rather than wrapping.
+        const next =
+          current === -1 ? 0 : Math.min(items.length - 1, Math.max(0, current + (key === "j" ? 1 : -1)));
+        setFocusedIdx(next);
+        // Ride the existing hover pipeline so the source pane follows.
+        setHoveredSnippet(items[next].source_snippet);
+        cardRefs.current[items[next].id]?.scrollIntoView({ block: "nearest" });
+        return;
+      }
+
+      if (focusedIdx === null) return;
+      const item = items[focusedIdx];
+      if (!item) return;
+
+      if (key === "enter" || key === "a") {
+        // Enter on a focused button is a native click — don't hijack it.
+        if (key === "enter" && target?.tagName === "BUTTON") return;
+        e.preventDefault();
+        setDecisions((prev) => ({
+          ...prev,
+          [item.id]: {
+            item_id: item.id,
+            action: "APPROVE",
+            override_tool: prev[item.id]?.override_tool || item.suggested_tool,
+            modified_payload: prev[item.id]?.modified_payload || item.tool_payload,
+          },
+        }));
+      } else if (key === "x" || key === "d") {
+        e.preventDefault();
+        setDecisions((prev) => ({
+          ...prev,
+          [item.id]: {
+            item_id: item.id,
+            action: "REJECT",
+            rejection_reason: "Dismissed by user during review",
+          },
+        }));
+      } else if (key === "e") {
+        e.preventDefault();
+        setEditSignals((prev) => ({ ...prev, [item.id]: (prev[item.id] ?? 0) + 1 }));
       }
     };
-    source.onerror = () => source.close();
-    return () => source.close();
-  }, [batchId]);
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isReviewable, items, focusedIdx]);
 
   const handleDecisionChange = (decision: ActionItemDecision) => {
     setDecisions((prev) => ({
@@ -184,10 +309,8 @@ export default function ReviewPage({
 
   const approvedCount = Object.values(decisions).filter((d) => d.action !== "REJECT").length;
   const rejectedCount = Object.values(decisions).filter((d) => d.action === "REJECT").length;
-  const isReviewable = batch?.status === "awaiting_approval";
 
   // Per-item outcome counts for the read-only banner on terminal batches.
-  const items = batch?.items ?? [];
   const executedCount = items.filter((i) => i.status === "executed").length;
   const failedItemCount = items.filter((i) => i.status === "failed").length;
   const ranCount = executedCount + failedItemCount;
@@ -216,7 +339,17 @@ export default function ReviewPage({
           <>
             Executed — {ranCount} {ranCount === 1 ? "action" : "actions"} ran
             {dismissedCount > 0 ? `, ${dismissedCount} dismissed` : ""}
-            {failedItemCount > 0 ? `, ${failedItemCount} failed` : ""}.
+            {failedItemCount > 0 ? (
+              <>
+                {", "}
+                <strong style={{ color: "var(--err)", fontWeight: 580 }}>
+                  {failedItemCount} failed
+                </strong>
+                .
+              </>
+            ) : (
+              "."
+            )}
           </>
         )}
         {batch.status === "expired" && <>Expired — approval timed out after 7 days.</>}
@@ -250,6 +383,11 @@ export default function ReviewPage({
           <p className="dim" style={{ fontSize: "0.84rem", marginTop: "4px" }}>
             Hover a card to locate its quote in the source. Nothing executes until you approve.
           </p>
+          {isReviewable && (
+            <p className="mono-label dim hide-narrow" style={{ marginTop: "10px" }}>
+              J/K move · A approve · X dismiss · E edit
+            </p>
+          )}
         </div>
 
         {isReviewable && (
@@ -277,17 +415,9 @@ export default function ReviewPage({
       {outcomeBanner && <div className="rise" style={{ marginBottom: "20px" }}>{outcomeBanner}</div>}
 
       {/* Workbench grid */}
-      <div
-        className="rise rise-1"
-        style={{
-          display: "grid",
-          gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1.25fr)",
-          gap: "18px",
-          alignItems: "start",
-        }}
-      >
+      <div className="rise rise-1 review-grid">
         {/* Left: source */}
-        <div style={{ position: "sticky", top: "80px" }}>
+        <div className="review-source">
           {batch && (
             <SourceSnippetViewer
               rawText={batch.raw_text}
@@ -300,21 +430,28 @@ export default function ReviewPage({
         {/* Right: cards */}
         <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
           {batch?.items.map((item) => (
-            <ActionCard
+            <div
               key={item.id}
-              item={item}
-              decision={decisions[item.id]}
-              readOnly={!isReviewable}
-              onDecisionChange={handleDecisionChange}
-              onHoverSnippet={setHoveredSnippet}
-              isHighlighted={Boolean(
-                hoveredSnippet &&
-                  item.source_snippet &&
-                  (hoveredSnippet === item.source_snippet ||
-                    hoveredSnippet.includes(item.source_snippet) ||
-                    item.source_snippet.includes(hoveredSnippet))
-              )}
-            />
+              ref={(el) => {
+                cardRefs.current[item.id] = el;
+              }}
+            >
+              <ActionCard
+                item={item}
+                decision={decisions[item.id]}
+                readOnly={!isReviewable}
+                onDecisionChange={handleDecisionChange}
+                onHoverSnippet={setHoveredSnippet}
+                editSignal={editSignals[item.id]}
+                isHighlighted={Boolean(
+                  hoveredSnippet &&
+                    item.source_snippet &&
+                    (hoveredSnippet === item.source_snippet ||
+                      hoveredSnippet.includes(item.source_snippet) ||
+                      item.source_snippet.includes(hoveredSnippet))
+                )}
+              />
+            </div>
           ))}
         </div>
       </div>

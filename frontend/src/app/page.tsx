@@ -116,7 +116,10 @@ export default function IngestPage() {
   }, []);
 
   useEffect(() => {
-    void refreshPollers();
+    // Deferred so the fetch's setState lands after the effect body —
+    // mirrors the history/ledger pages' initial-fetch pattern.
+    const t = setTimeout(() => void refreshPollers(), 0);
+    return () => clearTimeout(t);
   }, [refreshPollers]);
 
   const handleLoadPreset = (key: keyof typeof SAMPLE_PRESETS) => {

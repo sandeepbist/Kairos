@@ -436,3 +436,65 @@ async def setup_slack_schedule(
         )
 
     return {"status": "scheduled", "interval_minutes": 5}
+
+
+class TestConnectionRequest(BaseModel):
+    """Tool-level connection probe for the Settings UI Test button."""
+    tool: str = Field(min_length=2, max_length=50)
+
+
+@router.post("/test", response_model=dict[str, Any])
+async def test_connector_connection(
+    request: TestConnectionRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """Probes one connector's readiness by tool name.
+
+    Success means the connector's health_check passed — for OAuth tools
+    that is "a usable credential exists in the vault (or env)", for the
+    built-in task ledger it is always true. Details are phrased for the
+    operator and never echo any part of a stored secret.
+
+    The registry (mcp_client_manager._connectors) is the single source
+    of truth for tool names; get_connector normalizes (lower/strip) and
+    raises ValueError for anything outside the 12 routing targets.
+    """
+    try:
+        connector = mcp_client_manager.get_connector(request.tool)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                f"Unknown tool '{request.tool}'. Valid tools: "
+                "task_ledger, notion, jira, calendar, linear, todoist, "
+                "email_draft, github, confluence_page, google_tasks, "
+                "asana, clickup."
+            ),
+        )
+
+    tool = request.tool.lower().strip()
+    if tool == "task_ledger":
+        # Built-in, DB-backed, no external credential to probe.
+        return {
+            "tool": tool,
+            "success": True,
+            "detail": "Built-in — always available",
+        }
+
+    try:
+        healthy = await connector.health_check()
+    except Exception:
+        # A connector whose probe crashes is reported as not ready, not
+        # as a 500: the Settings UI renders a red row either way.
+        healthy = False
+
+    detail = (
+        "Credential found and connector ready"
+        if healthy
+        else "No credential stored for this connector"
+    )
+    return {
+        "tool": tool,
+        "success": bool(healthy),
+        "detail": detail,
+    }

@@ -37,7 +37,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title=settings.APP_NAME,
     description="Production-grade Ambient Action Agent API",
-    version="1.0.0",
+    version=settings.APP_VERSION,
     lifespan=lifespan,
     # OpenAPI is operator tooling: keep it exposed in dev, hide it in prod
     # unless explicitly re-enabled via env.
@@ -78,6 +78,7 @@ async def health_check():
     return {
         "status": "healthy",
         "app": settings.APP_NAME,
+        "version": settings.APP_VERSION,
         "environment": settings.APP_ENV,
         "sandbox_mode": settings.SANDBOX_MODE,
     }

@@ -64,6 +64,11 @@ frontend/build/
 .npm
 .eslintcache
 
+# Playwright e2e artifacts
+frontend/test-results/
+frontend/playwright-report/
+frontend/blob-report/
+
 # Temporal & Databases
 temporal.db*
 *.sqlite

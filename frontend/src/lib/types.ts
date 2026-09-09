@@ -23,6 +23,8 @@ export interface ActionItem {
   rejection_reason?: string;
   executed_at?: string;
   created_at: string;
+  /** Execution error text (from ExecutionLogModel.error). Present on failed items. */
+  error?: string | null;
 }
 
 export interface BatchResponse {
@@ -54,6 +56,8 @@ export interface ExecutionLog {
   item_description?: string;
   latency_ms?: number;
   executed_at: string;
+  /** Failure reason, previously server-side only. */
+  error?: string | null;
 }
 
 export interface HistoryBatch {
@@ -122,4 +126,41 @@ export interface WebhookDelivery {
   next_retry_at?: string | null;
   created_at: string | null;
   delivered_at: string | null;
+}
+
+// ── Wave 3: per-item error surfacing, task ledger, connector tests ───
+
+/**
+ * Execution error text that previously lived only in
+ * ExecutionLogModel.error. Optional so older backend responses
+ * (and sandbox paths that never reach a tool) degrade gracefully.
+ */
+export interface LedgerTask {
+  id: string;
+  title: string;
+  notes: string;
+  priority: string;
+  due_date: string | null;
+  status: string;
+  external_url?: string | null;
+  created_at: string;
+  updated_at?: string;
+}
+
+export interface ConnectorTestResult {
+  tool: string;
+  success: boolean;
+  detail: string;
+}
+
+export interface BatchesSummary {
+  awaiting_approval: number;
+}
+
+export interface HealthResponse {
+  status: string;
+  app: string;
+  version: string;
+  environment: string;
+  sandbox_mode: boolean;
 }

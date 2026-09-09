@@ -11,6 +11,8 @@ interface ActionCardProps {
   onHoverSnippet: (snippet: string | null) => void;
   isHighlighted?: boolean;
   readOnly?: boolean;
+  /** Increment to request opening the payload editor (keyboard shortcut). */
+  editSignal?: number;
 }
 
 const TOOL_NAMES: Record<TargetTool, string> = {
@@ -48,6 +50,7 @@ export function ActionCard({
   onHoverSnippet,
   isHighlighted,
   readOnly,
+  editSignal,
 }: ActionCardProps) {
   const [selectedTool, setSelectedTool] = useState<TargetTool>(
     decision?.override_tool || item.suggested_tool
@@ -56,6 +59,18 @@ export function ActionCard({
     decision?.modified_payload || item.tool_payload || {}
   );
   const [isModalOpen, setIsModalOpen] = useState(false);
+
+  // Keyboard shortcut (editSignal from the review page) opens the payload
+  // editor for this card without touching decision state ownership.
+  // Render-phase prop-change adjustment (no effect) per the documented
+  // "adjust state when a prop changes" pattern.
+  const [prevEditSignal, setPrevEditSignal] = useState(editSignal);
+  if (editSignal !== prevEditSignal) {
+    setPrevEditSignal(editSignal);
+    if (editSignal && editSignal > 0) {
+      setIsModalOpen(true);
+    }
+  }
 
   const currentAction = decision?.action || "APPROVE";
   // In read-only mode the decision state is never seeded — derive the
@@ -201,6 +216,16 @@ export function ActionCard({
           <span style={{ textTransform: "capitalize" }}>{item.priority}</span>
         </span>
       </div>
+
+      {/* Row 3b: execution failure detail (read-only failed items). The
+          outcome chip above already carries the generic "Failed" state, so
+          this only renders when the backend supplied error text. */}
+      {readOnly && item.status === "failed" && item.error && (
+        <div className="review-item-error" title={item.error}>
+          <span className="mono-label review-error-label">Error</span>
+          <span className="review-error-text">{item.error}</span>
+        </div>
+      )}
 
       {/* Row 4: actions / outcome */}
       <div

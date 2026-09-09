@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import { getConnectorsStatus, toggleSandbox, saveOAuthToken, deleteOAuthToken, getOperatorSettings, saveToolTargets } from "@/lib/api";
+import { getConnectorsStatus, toggleSandbox, saveOAuthToken, deleteOAuthToken, getOperatorSettings, saveToolTargets, testConnector } from "@/lib/api";
 import { errorMessage } from "@/lib/errors";
 import { ConnectorsStatusResponse, TargetTool } from "@/lib/types";
 import { WebhooksPanel } from "@/components/WebhooksPanel";
@@ -82,6 +82,31 @@ interface CredentialConfig {
   connectedKey: (s: ConnectorsStatusResponse) => boolean;
 }
 
+/**
+ * Credential cards are keyed by PROVIDER; the connector test endpoint
+ * takes a TARGET TOOL. gemini/openai are LLM providers with no tool to
+ * exercise, so they get no Test button.
+ */
+const PROVIDER_TO_TOOL: Record<string, string> = {
+  notion: "notion",
+  jira: "jira",
+  google_calendar: "calendar",
+  gmail: "email_draft",
+  linear: "linear",
+  todoist: "todoist",
+  github: "github",
+  confluence: "confluence_page",
+  google_tasks: "google_tasks",
+  asana: "asana",
+  clickup: "clickup",
+};
+
+interface TestState {
+  running: boolean;
+  success?: boolean;
+  detail?: string;
+}
+
 const TOOL_CARDS: Array<{
   tool: TargetTool;
   name: string;
@@ -119,6 +144,8 @@ export default function SettingsPage() {
 
   const [targetValues, setTargetValues] = useState<Record<string, string>>({});
   const [savingTargets, setSavingTargets] = useState(false);
+
+  const [testStates, setTestStates] = useState<Record<string, TestState>>({});
 
   const loadStatus = () => {
     getConnectorsStatus()
@@ -209,6 +236,24 @@ export default function SettingsPage() {
       setMessage({ text: errorMessage(err, `Failed to disconnect ${provider}`), type: "error" });
     } finally {
       setSavingProvider(null);
+    }
+  };
+
+  const handleTestConnector = async (provider: string) => {
+    const tool = PROVIDER_TO_TOOL[provider];
+    if (!tool) return;
+    setTestStates((prev) => ({ ...prev, [provider]: { running: true } }));
+    try {
+      const result = await testConnector(tool);
+      setTestStates((prev) => ({
+        ...prev,
+        [provider]: { running: false, success: result.success, detail: result.detail },
+      }));
+    } catch (err) {
+      setTestStates((prev) => ({
+        ...prev,
+        [provider]: { running: false, success: false, detail: errorMessage(err, "Test failed") },
+      }));
     }
   };
 
@@ -465,6 +510,8 @@ export default function SettingsPage() {
       <div style={{ display: "flex", flexDirection: "column", gap: "10px", marginBottom: "36px" }}>
         {credentialCards.map((card, idx) => {
           const connected = card.connectedKey(status as ConnectorsStatusResponse);
+          const testTool = PROVIDER_TO_TOOL[card.provider];
+          const test = testStates[card.provider];
           return (
             <div
               key={card.provider}
@@ -530,7 +577,33 @@ export default function SettingsPage() {
                 >
                   {savingProvider === card.provider ? "Saving…" : connected ? "Update" : "Save"}
                 </button>
+                {testTool && (
+                  <button
+                    type="button"
+                    className="btn btn-ghost btn-sm"
+                    onClick={() => handleTestConnector(card.provider)}
+                    disabled={test?.running}
+                    style={{ flexShrink: 0 }}
+                  >
+                    {test?.running ? "Testing…" : "Test"}
+                  </button>
+                )}
               </div>
+
+              {testTool && test && !test.running && test.detail !== undefined && (
+                <p
+                  className="mono-label"
+                  style={{
+                    marginTop: "10px",
+                    fontSize: "0.72rem",
+                    color: test.success ? "var(--ok)" : "var(--err)",
+                    lineHeight: 1.5,
+                    overflowWrap: "anywhere",
+                  }}
+                >
+                  {test.success ? `Connected — ${test.detail}` : test.detail}
+                </p>
+              )}
             </div>
           );
         })}

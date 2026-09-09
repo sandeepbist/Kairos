@@ -11,6 +11,134 @@ interface PayloadModalProps {
   onSave: (modifiedPayload: Record<string, unknown>) => void;
 }
 
+/**
+ * Supported field renderings.
+ * "single-email" renders one email text input whose payload value is an
+ * array (first element shown, `[value]` or `[]` written back).
+ */
+type FieldKind =
+  | "text"
+  | "textarea"
+  | "select"
+  | "date"
+  | "datetime-local"
+  | "single-email";
+
+interface FieldConfig {
+  /** Payload property the field displays and writes back to. */
+  key: string;
+  label: string;
+  kind: FieldKind;
+  /** Options for kind: "select". */
+  options?: { value: string; label: string }[];
+  /** Display default for kind: "select" when the payload lacks the key (never written back). */
+  defaultValue?: string;
+  /** Secondary payload key whose value is displayed while this key is empty (display-only). */
+  fallback?: "description" | "title";
+  placeholder?: string;
+  /** Render the input with the "mono" modifier class. */
+  mono?: boolean;
+  /** Rows for kind: "textarea" (default 3). */
+  rows?: number;
+  /** Explanatory copy rendered directly below this field. */
+  note?: string;
+}
+
+/** Shared option set for the lowercase low/medium/high priority selects (linear, task_ledger). */
+const PRIORITY_OPTIONS = [
+  { value: "low", label: "Low" },
+  { value: "medium", label: "Medium" },
+  { value: "high", label: "High" },
+];
+
+/**
+ * Per-tool form layout. Keys, order and kinds mirror the payload each tool
+ * consumes — adding a field to a tool is a config edit, not new JSX.
+ */
+const TOOL_FIELDS: Record<TargetTool, FieldConfig[]> = {
+  jira: [
+    { key: "project_key", label: "Project key", kind: "text", mono: true, placeholder: "from Settings · Tool targets" },
+    {
+      key: "issue_type", label: "Issue type", kind: "select", defaultValue: "Task",
+      options: [
+        { value: "Task", label: "Task" },
+        { value: "Bug", label: "Bug" },
+        { value: "Story", label: "Story" },
+      ],
+    },
+    { key: "summary", label: "Summary", kind: "text" },
+    {
+      key: "priority", label: "Priority", kind: "select", defaultValue: "Medium",
+      options: [
+        { value: "Low", label: "Low" },
+        { value: "Medium", label: "Medium" },
+        { value: "High", label: "High" },
+        { value: "Critical", label: "Critical" },
+      ],
+    },
+  ],
+  calendar: [
+    { key: "title", label: "Event title", kind: "text" },
+    { key: "start_time", label: "Start time", kind: "datetime-local", mono: true },
+    {
+      key: "end_time", label: "End time", kind: "datetime-local", mono: true,
+      note: "Required before execution — Kairos never invents a meeting slot. The source quote is shown on the left.",
+    },
+    { key: "attendees", label: "Attendee email", kind: "single-email", mono: true, placeholder: "name@company.com" },
+  ],
+  notion: [
+    { key: "database_id", label: "Database ID", kind: "text", mono: true, placeholder: "from Settings · Tool targets (empty = search)" },
+    { key: "title", label: "Page title", kind: "text" },
+    { key: "details", label: "Details", kind: "textarea", fallback: "description" },
+  ],
+  linear: [
+    { key: "title", label: "Issue title", kind: "text" },
+    { key: "description", label: "Description", kind: "textarea" },
+    { key: "priority", label: "Priority", kind: "select", defaultValue: "medium", options: PRIORITY_OPTIONS },
+  ],
+  todoist: [
+    { key: "content", label: "Task content", kind: "text", fallback: "title" },
+    { key: "description", label: "Description", kind: "textarea" },
+    { key: "due_date", label: "Due date (natural language ok)", kind: "text", mono: true, placeholder: "next Friday" },
+  ],
+  email_draft: [
+    { key: "to", label: "To (optional)", kind: "text", mono: true, placeholder: "name@company.com" },
+    { key: "subject", label: "Subject", kind: "text" },
+    { key: "body", label: "Body", kind: "textarea", rows: 4 },
+  ],
+  github: [
+    { key: "repo", label: "Repository (owner/name)", kind: "text", mono: true, placeholder: "acme/planning" },
+    { key: "title", label: "Issue title", kind: "text" },
+    { key: "description", label: "Description", kind: "textarea" },
+    { key: "labels", label: "Labels (comma separated)", kind: "text", mono: true, placeholder: "kairos, bug" },
+  ],
+  confluence_page: [
+    { key: "space_key", label: "Space key", kind: "text", mono: true, placeholder: "TEAM" },
+    { key: "title", label: "Page title", kind: "text" },
+    { key: "content", label: "Content", kind: "textarea", rows: 4 },
+  ],
+  google_tasks: [
+    { key: "title", label: "Task title", kind: "text" },
+    { key: "notes", label: "Notes", kind: "textarea" },
+    { key: "due_date", label: "Due date", kind: "date", mono: true },
+  ],
+  asana: [
+    { key: "name", label: "Task name", kind: "text", fallback: "title" },
+    { key: "notes", label: "Notes", kind: "textarea" },
+    { key: "due_date", label: "Due date", kind: "date", mono: true },
+  ],
+  clickup: [
+    { key: "list_id", label: "List ID", kind: "text", mono: true, placeholder: "from the list URL in ClickUp" },
+    { key: "name", label: "Task name", kind: "text", fallback: "title" },
+    { key: "description", label: "Description", kind: "textarea" },
+  ],
+  task_ledger: [
+    { key: "title", label: "Task title", kind: "text" },
+    { key: "notes", label: "Notes", kind: "textarea" },
+    { key: "priority", label: "Priority", kind: "select", defaultValue: "medium", options: PRIORITY_OPTIONS },
+  ],
+};
+
 const FOCUSABLE_SELECTOR =
   'button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), a[href], [tabindex]:not([tabindex="-1"])';
 
@@ -96,10 +224,24 @@ export function PayloadModal({
     return typeof v === "string" ? v : v == null ? fallback : String(v);
   };
 
+  /** Display value for a field, honoring display-only select defaults and fallbacks. */
+  const fieldValue = (field: FieldConfig): string => {
+    const own = str(field.key, field.defaultValue ?? "");
+    return own || (field.fallback ? str(field.fallback) : "");
+  };
+
+  /** Display value for "single-email" fields: first element of the attendees array. */
+  const attendeeValue = (field: FieldConfig): string => {
+    const v = payload[field.key];
+    return Array.isArray(v) ? String(v[0] ?? "") : "";
+  };
+
   const handleSave = () => {
     onSave(payload);
     onClose();
   };
+
+  const fields = TOOL_FIELDS[targetTool];
 
   return (
     <div
@@ -163,445 +305,59 @@ export function PayloadModal({
             paddingRight: "4px",
           }}
         >
-          {/* JIRA */}
-          {targetTool === "jira" && (
-            <>
+          {fields.map((field) => (
+            <React.Fragment key={field.key}>
               <div>
-                <label className="field-label">Project key</label>
-                <input
-                  className="input mono"
-                  value={str("project_key")}
-                  onChange={(e) => handleChange("project_key", e.target.value)}
-                  placeholder="from Settings · Tool targets"
-                />
+                <label className="field-label">{field.label}</label>
+                {field.kind === "textarea" ? (
+                  <textarea
+                    className="input"
+                    style={{ resize: "vertical" }}
+                    rows={field.rows ?? 3}
+                    value={fieldValue(field)}
+                    onChange={(e) => handleChange(field.key, e.target.value)}
+                  />
+                ) : field.kind === "select" ? (
+                  <select
+                    className="select"
+                    value={fieldValue(field)}
+                    onChange={(e) => handleChange(field.key, e.target.value)}
+                  >
+                    {field.options?.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <input
+                    className={field.mono ? "input mono" : "input"}
+                    type={
+                      field.kind === "date" || field.kind === "datetime-local"
+                        ? field.kind
+                        : undefined
+                    }
+                    value={
+                      field.kind === "single-email"
+                        ? attendeeValue(field)
+                        : fieldValue(field)
+                    }
+                    placeholder={field.placeholder}
+                    onChange={(e) =>
+                      field.kind === "single-email"
+                        ? handleChange(field.key, e.target.value ? [e.target.value] : [])
+                        : handleChange(field.key, e.target.value)
+                    }
+                  />
+                )}
               </div>
-              <div>
-                <label className="field-label">Issue type</label>
-                <select
-                  className="select"
-                  value={str("issue_type", "Task")}
-                  onChange={(e) => handleChange("issue_type", e.target.value)}
-                >
-                  <option value="Task">Task</option>
-                  <option value="Bug">Bug</option>
-                  <option value="Story">Story</option>
-                </select>
-              </div>
-              <div>
-                <label className="field-label">Summary</label>
-                <input
-                  className="input"
-                  value={str("summary")}
-                  onChange={(e) => handleChange("summary", e.target.value)}
-                />
-              </div>
-              <div>
-                <label className="field-label">Priority</label>
-                <select
-                  className="select"
-                  value={str("priority", "Medium")}
-                  onChange={(e) => handleChange("priority", e.target.value)}
-                >
-                  <option value="Low">Low</option>
-                  <option value="Medium">Medium</option>
-                  <option value="High">High</option>
-                  <option value="Critical">Critical</option>
-                </select>
-              </div>
-            </>
-          )}
-
-          {/* CALENDAR */}
-          {targetTool === "calendar" && (
-            <>
-              <div>
-                <label className="field-label">Event title</label>
-                <input
-                  className="input"
-                  value={str("title")}
-                  onChange={(e) => handleChange("title", e.target.value)}
-                />
-              </div>
-              <div>
-                <label className="field-label">Start time</label>
-                <input
-                  className="input mono"
-                  type="datetime-local"
-                  value={str("start_time")}
-                  onChange={(e) => handleChange("start_time", e.target.value)}
-                />
-              </div>
-              <div>
-                <label className="field-label">End time</label>
-                <input
-                  className="input mono"
-                  type="datetime-local"
-                  value={str("end_time")}
-                  onChange={(e) => handleChange("end_time", e.target.value)}
-                />
-              </div>
-              <p className="dim" style={{ fontSize: "0.72rem", lineHeight: 1.45 }}>
-                Required before execution — Kairos never invents a meeting slot. The source
-                quote is shown on the left.
-              </p>
-              <div>
-                <label className="field-label">Attendee email</label>
-                <input
-                  className="input mono"
-                  value={Array.isArray(payload.attendees) ? String(payload.attendees[0] ?? "") : ""}
-                  onChange={(e) =>
-                    handleChange("attendees", e.target.value ? [e.target.value] : [])
-                  }
-                  placeholder="name@company.com"
-                />
-              </div>
-            </>
-          )}
-
-          {/* NOTION */}
-          {targetTool === "notion" && (
-            <>
-              <div>
-                <label className="field-label">Database ID</label>
-                <input
-                  className="input mono"
-                  value={str("database_id")}
-                  onChange={(e) => handleChange("database_id", e.target.value)}
-                  placeholder="from Settings · Tool targets (empty = search)"
-                />
-              </div>
-              <div>
-                <label className="field-label">Page title</label>
-                <input
-                  className="input"
-                  value={str("title")}
-                  onChange={(e) => handleChange("title", e.target.value)}
-                />
-              </div>
-              <div>
-                <label className="field-label">Details</label>
-                <textarea
-                  className="input"
-                  style={{ resize: "vertical" }}
-                  rows={3}
-                  value={str("details") || str("description")}
-                  onChange={(e) => handleChange("details", e.target.value)}
-                />
-              </div>
-            </>
-          )}
-
-          {/* LINEAR */}
-          {targetTool === "linear" && (
-            <>
-              <div>
-                <label className="field-label">Issue title</label>
-                <input
-                  className="input"
-                  value={str("title")}
-                  onChange={(e) => handleChange("title", e.target.value)}
-                />
-              </div>
-              <div>
-                <label className="field-label">Description</label>
-                <textarea
-                  className="input"
-                  style={{ resize: "vertical" }}
-                  rows={3}
-                  value={str("description")}
-                  onChange={(e) => handleChange("description", e.target.value)}
-                />
-              </div>
-              <div>
-                <label className="field-label">Priority</label>
-                <select
-                  className="select"
-                  value={str("priority", "medium")}
-                  onChange={(e) => handleChange("priority", e.target.value)}
-                >
-                  <option value="low">Low</option>
-                  <option value="medium">Medium</option>
-                  <option value="high">High</option>
-                </select>
-              </div>
-            </>
-          )}
-
-          {/* TODOIST */}
-          {targetTool === "todoist" && (
-            <>
-              <div>
-                <label className="field-label">Task content</label>
-                <input
-                  className="input"
-                  value={str("content") || str("title")}
-                  onChange={(e) => handleChange("content", e.target.value)}
-                />
-              </div>
-              <div>
-                <label className="field-label">Description</label>
-                <textarea
-                  className="input"
-                  style={{ resize: "vertical" }}
-                  rows={3}
-                  value={str("description")}
-                  onChange={(e) => handleChange("description", e.target.value)}
-                />
-              </div>
-              <div>
-                <label className="field-label">Due date (natural language ok)</label>
-                <input
-                  className="input mono"
-                  value={str("due_date")}
-                  onChange={(e) => handleChange("due_date", e.target.value)}
-                  placeholder="next Friday"
-                />
-              </div>
-            </>
-          )}
-
-          {/* EMAIL DRAFT */}
-          {targetTool === "email_draft" && (
-            <>
-              <div>
-                <label className="field-label">To (optional)</label>
-                <input
-                  className="input mono"
-                  value={str("to")}
-                  onChange={(e) => handleChange("to", e.target.value)}
-                  placeholder="name@company.com"
-                />
-              </div>
-              <div>
-                <label className="field-label">Subject</label>
-                <input
-                  className="input"
-                  value={str("subject")}
-                  onChange={(e) => handleChange("subject", e.target.value)}
-                />
-              </div>
-              <div>
-                <label className="field-label">Body</label>
-                <textarea
-                  className="input"
-                  style={{ resize: "vertical" }}
-                  rows={4}
-                  value={str("body")}
-                  onChange={(e) => handleChange("body", e.target.value)}
-                />
-              </div>
-            </>
-          )}
-
-          {/* GITHUB */}
-          {targetTool === "github" && (
-            <>
-              <div>
-                <label className="field-label">Repository (owner/name)</label>
-                <input
-                  className="input mono"
-                  value={str("repo")}
-                  onChange={(e) => handleChange("repo", e.target.value)}
-                  placeholder="acme/planning"
-                />
-              </div>
-              <div>
-                <label className="field-label">Issue title</label>
-                <input
-                  className="input"
-                  value={str("title")}
-                  onChange={(e) => handleChange("title", e.target.value)}
-                />
-              </div>
-              <div>
-                <label className="field-label">Description</label>
-                <textarea
-                  className="input"
-                  style={{ resize: "vertical" }}
-                  rows={3}
-                  value={str("description")}
-                  onChange={(e) => handleChange("description", e.target.value)}
-                />
-              </div>
-              <div>
-                <label className="field-label">Labels (comma separated)</label>
-                <input
-                  className="input mono"
-                  value={str("labels")}
-                  onChange={(e) => handleChange("labels", e.target.value)}
-                  placeholder="kairos, bug"
-                />
-              </div>
-            </>
-          )}
-
-          {/* CONFLUENCE */}
-          {targetTool === "confluence_page" && (
-            <>
-              <div>
-                <label className="field-label">Space key</label>
-                <input
-                  className="input mono"
-                  value={str("space_key")}
-                  onChange={(e) => handleChange("space_key", e.target.value)}
-                  placeholder="TEAM"
-                />
-              </div>
-              <div>
-                <label className="field-label">Page title</label>
-                <input
-                  className="input"
-                  value={str("title")}
-                  onChange={(e) => handleChange("title", e.target.value)}
-                />
-              </div>
-              <div>
-                <label className="field-label">Content</label>
-                <textarea
-                  className="input"
-                  style={{ resize: "vertical" }}
-                  rows={4}
-                  value={str("content")}
-                  onChange={(e) => handleChange("content", e.target.value)}
-                />
-              </div>
-            </>
-          )}
-
-          {/* GOOGLE TASKS */}
-          {targetTool === "google_tasks" && (
-            <>
-              <div>
-                <label className="field-label">Task title</label>
-                <input
-                  className="input"
-                  value={str("title")}
-                  onChange={(e) => handleChange("title", e.target.value)}
-                />
-              </div>
-              <div>
-                <label className="field-label">Notes</label>
-                <textarea
-                  className="input"
-                  style={{ resize: "vertical" }}
-                  rows={3}
-                  value={str("notes")}
-                  onChange={(e) => handleChange("notes", e.target.value)}
-                />
-              </div>
-              <div>
-                <label className="field-label">Due date</label>
-                <input
-                  className="input mono"
-                  type="date"
-                  value={str("due_date")}
-                  onChange={(e) => handleChange("due_date", e.target.value)}
-                />
-              </div>
-            </>
-          )}
-
-          {/* ASANA */}
-          {targetTool === "asana" && (
-            <>
-              <div>
-                <label className="field-label">Task name</label>
-                <input
-                  className="input"
-                  value={str("name") || str("title")}
-                  onChange={(e) => handleChange("name", e.target.value)}
-                />
-              </div>
-              <div>
-                <label className="field-label">Notes</label>
-                <textarea
-                  className="input"
-                  style={{ resize: "vertical" }}
-                  rows={3}
-                  value={str("notes")}
-                  onChange={(e) => handleChange("notes", e.target.value)}
-                />
-              </div>
-              <div>
-                <label className="field-label">Due date</label>
-                <input
-                  className="input mono"
-                  type="date"
-                  value={str("due_date")}
-                  onChange={(e) => handleChange("due_date", e.target.value)}
-                />
-              </div>
-            </>
-          )}
-
-          {/* CLICKUP */}
-          {targetTool === "clickup" && (
-            <>
-              <div>
-                <label className="field-label">List ID</label>
-                <input
-                  className="input mono"
-                  value={str("list_id")}
-                  onChange={(e) => handleChange("list_id", e.target.value)}
-                  placeholder="from the list URL in ClickUp"
-                />
-              </div>
-              <div>
-                <label className="field-label">Task name</label>
-                <input
-                  className="input"
-                  value={str("name") || str("title")}
-                  onChange={(e) => handleChange("name", e.target.value)}
-                />
-              </div>
-              <div>
-                <label className="field-label">Description</label>
-                <textarea
-                  className="input"
-                  style={{ resize: "vertical" }}
-                  rows={3}
-                  value={str("description")}
-                  onChange={(e) => handleChange("description", e.target.value)}
-                />
-              </div>
-            </>
-          )}
-
-          {/* TASK LEDGER */}
-          {targetTool === "task_ledger" && (
-            <>
-              <div>
-                <label className="field-label">Task title</label>
-                <input
-                  className="input"
-                  value={str("title")}
-                  onChange={(e) => handleChange("title", e.target.value)}
-                />
-              </div>
-              <div>
-                <label className="field-label">Notes</label>
-                <textarea
-                  className="input"
-                  style={{ resize: "vertical" }}
-                  rows={3}
-                  value={str("notes")}
-                  onChange={(e) => handleChange("notes", e.target.value)}
-                />
-              </div>
-              <div>
-                <label className="field-label">Priority</label>
-                <select
-                  className="select"
-                  value={str("priority", "medium")}
-                  onChange={(e) => handleChange("priority", e.target.value)}
-                >
-                  <option value="low">Low</option>
-                  <option value="medium">Medium</option>
-                  <option value="high">High</option>
-                </select>
-              </div>
-            </>
-          )}
+              {field.note ? (
+                <p className="dim" style={{ fontSize: "0.72rem", lineHeight: 1.45 }}>
+                  {field.note}
+                </p>
+              ) : null}
+            </React.Fragment>
+          ))}
         </div>
 
         <div

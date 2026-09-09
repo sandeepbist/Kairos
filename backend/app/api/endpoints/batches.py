@@ -1,18 +1,42 @@
 """Batches API Endpoints: Ingestion, Review polling, and Human Approval."""
 import uuid
+from datetime import datetime
 from typing import Any
 from fastapi import APIRouter, HTTPException, Depends, status
-from sqlalchemy import select
+from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import settings
 from app.db.session import get_db
-from app.db.models import BatchModel, ActionItemModel
+from app.db.models import BatchModel, ActionItemModel, ExecutionLogModel
 from app.schemas.action_item import (
     BatchIngestRequest,
-    BatchStatusResponse,
     ActionItem,
     ActionItemApprovalRequest,
 )
+from pydantic import BaseModel, Field
+
+
+class _ActionItemWithError(ActionItem):
+    """ActionItem plus the surfaced execution error for the review UI.
+
+    The base schemas are shared with the ingest path (owned elsewhere);
+    these subclasses add only the read-side error field so the batch
+    detail response can show why a failed item failed.
+    """
+    error: str | None = None
+
+
+class _BatchStatusResponseWithError(BaseModel):
+    """BatchStatusResponse shape with error-carrying items."""
+    batch_id: str
+    status: str
+    source_type: str
+    raw_text: str
+    token_count: int | None = None
+    items: list[_ActionItemWithError] = Field(default_factory=list)
+    created_at: datetime
+    updated_at: datetime | None = None
+    temporal_workflow_id: str | None = None
 from app.temporal.workflows import ProcessBatchWorkflow
 from app.temporal.worker import get_temporal_client
 from app.core.telemetry import telemetry
@@ -105,7 +129,25 @@ async def _dispatch_workflow_and_respond(
     }
 
 
-@router.get("/{batch_id}", response_model=BatchStatusResponse)
+@router.get("/summary", response_model=dict[str, int])
+async def get_batches_summary(
+    db: AsyncSession = Depends(get_db),
+):
+    """Counts batches awaiting human review — the dashboard badge.
+
+    Declared before /{batch_id}: FastAPI matches literal path segments
+    against parameterized routes in registration order, so a later
+    declaration would swallow "summary" as a batch id.
+    """
+    count = await db.scalar(
+        select(func.count()).select_from(BatchModel).where(
+            BatchModel.status == "awaiting_approval"
+        )
+    )
+    return {"awaiting_approval": int(count or 0)}
+
+
+@router.get("/{batch_id}", response_model=_BatchStatusResponseWithError)
 async def get_batch_status(
     batch_id: str,
     db: AsyncSession = Depends(get_db),
@@ -126,8 +168,24 @@ async def get_batch_status(
     items_res = await db.execute(items_query)
     items = items_res.scalars().all()
 
+    # Latest execution error per item (one bounded scan of THIS batch's
+    # logs, newest-first per item — no per-item queries). Items without
+    # a failed log surface error=None, which the UI renders as a muted
+    # "no error recorded" state.
+    logs = list(
+        await db.scalars(
+            select(ExecutionLogModel).where(
+                ExecutionLogModel.batch_id == batch_id,
+                ExecutionLogModel.error.is_not(None),
+            )
+        )
+    )
+    latest_error_by_item: dict[str, str] = {}
+    for log in sorted(logs, key=lambda l: l.executed_at, reverse=True):
+        latest_error_by_item.setdefault(log.item_id, log.error)
+
     action_items_response = [
-        ActionItem(
+        _ActionItemWithError(
             id=item.id,
             batch_id=item.batch_id,
             description=item.description,
@@ -145,11 +203,12 @@ async def get_batch_status(
             rejection_reason=item.rejection_reason,
             executed_at=item.executed_at,
             created_at=item.created_at,
+            error=latest_error_by_item.get(item.id),
         )
         for item in items
     ]
 
-    return BatchStatusResponse(
+    return _BatchStatusResponseWithError(
         batch_id=batch.id,
         status=batch.status,
         source_type=batch.source_type,

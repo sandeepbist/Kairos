@@ -1,6 +1,7 @@
 """Configuration and environment settings for Kairos backend."""
 import logging
 from functools import lru_cache
+from pathlib import Path
 from typing import Literal
 
 from pydantic import Field, field_validator
@@ -10,6 +11,20 @@ logger = logging.getLogger(__name__)
 
 # Fernet keys must be 32-byte urlsafe base64 (44 chars, '='-padded)
 _FERNET_KEY_LEN = 44
+
+# Single source of truth for the Kairos version. The VERSION file lives
+# at the backend root and is the only place a release bumps it; tags,
+# the /api/health response, the frontend footer, and release artifacts
+# all read from here.
+_VERSION_FILE = Path(__file__).resolve().parent.parent / "VERSION"
+
+
+def get_app_version() -> str:
+    """Return the version recorded in backend/VERSION (e.g. '0.1.0')."""
+    try:
+        return _VERSION_FILE.read_text(encoding="utf-8").strip() or "0.0.0"
+    except OSError:
+        return "0.0.0"
 
 
 class Settings(BaseSettings):
@@ -21,6 +36,7 @@ class Settings(BaseSettings):
 
     # App Environment
     APP_NAME: str = "Kairos Ambient Action Agent"
+    APP_VERSION: str = Field(default_factory=get_app_version)
     APP_ENV: Literal["development", "production", "test"] = "development"
     DEBUG: bool = True
     SANDBOX_MODE: bool = False  # Production default: live real API calls to MCP tools

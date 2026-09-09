@@ -724,3 +724,64 @@ body {
     max-width: 100%;
   }
 }
+
+/* ============================================================
+   Review workbench layer (appended)
+   Responsive 2-col grid, sticky source column, per-item failure
+   detail, and narrow-viewport behavior for the review screen.
+   ============================================================ */
+
+.review-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr);
+  gap: 18px;
+  align-items: start;
+}
+
+/* Source column rides alongside the card stack on wide screens */
+.review-source {
+  position: sticky;
+  top: 80px;
+  max-height: calc(100vh - 220px);
+  overflow: auto;
+}
+
+/* Per-item execution failure detail (read-only failed cards) */
+.review-item-error {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+}
+.review-error-label {
+  color: var(--err);
+  text-transform: uppercase;
+  flex-shrink: 0;
+}
+.review-error-text {
+  font-size: 0.78rem;
+  line-height: 1.5;
+  color: var(--text-muted);
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+
+/* ---- ≤ 900px: single column, source scrolls in flow ---- */
+
+@media (max-width: 900px) {
+  .review-grid {
+    grid-template-columns: 1fr;
+    /* Keep the sticky execution bar clear of the last card */
+    padding-bottom: 96px;
+  }
+  .review-source {
+    position: static;
+    max-height: 60vh;
+  }
+}

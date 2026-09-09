@@ -7,6 +7,10 @@ import {
   CreateWebhookResponse,
   WebhookDelivery,
   WebhookEndpoint,
+  LedgerTask,
+  ConnectorTestResult,
+  BatchesSummary,
+  HealthResponse,
 } from "./types";
 
 /**
@@ -240,4 +244,34 @@ export async function redeliverDelivery(
   return request(`/api/webhooks/${endpointId}/deliveries/${deliveryId}/redeliver`, {
     method: "POST",
   });
+}
+
+// ── Wave 3: ledger, connector tests, summaries, health (Phase 21) ────
+
+export async function listLedgerTasks(status?: string): Promise<LedgerTask[]> {
+  const qs = status ? `?status=${encodeURIComponent(status)}` : "";
+  return request(`/api/ledger/tasks${qs}`, { cache: "no-store" });
+}
+
+export async function completeLedgerTask(taskId: string): Promise<{ status: string }> {
+  return request(`/api/ledger/tasks/${taskId}/complete`, { method: "POST" });
+}
+
+export async function deleteLedgerTask(taskId: string): Promise<{ status: string }> {
+  return request(`/api/ledger/tasks/${taskId}`, { method: "DELETE" });
+}
+
+export async function testConnector(tool: string): Promise<ConnectorTestResult> {
+  return request("/api/connectors/test", {
+    method: "POST",
+    body: JSON.stringify({ tool }),
+  });
+}
+
+export async function getBatchesSummary(): Promise<BatchesSummary> {
+  return request("/api/batches/summary", { cache: "no-store" });
+}
+
+export async function getHealth(): Promise<HealthResponse> {
+  return request("/api/health", { cache: "no-store" });
 }
