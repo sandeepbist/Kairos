@@ -431,7 +431,7 @@ export default function ReviewPage({
       </div>
 
       {error && (
-        <div className="notice notice-error" style={{ marginBottom: "20px" }}>
+        <div className="notice notice-error" role="alert" style={{ marginBottom: "20px" }}>
           {error}
         </div>
       )}

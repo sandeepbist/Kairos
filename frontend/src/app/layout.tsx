@@ -35,8 +35,30 @@ export default function RootLayout({
   return (
     <html lang="en" className={`${inter.variable} ${jetbrains.variable}`}>
       <body style={{ display: "flex", flexDirection: "column", minHeight: "100vh" }}>
+        <a
+          href="#main-content"
+          className="skip-link"
+          style={{
+            position: "absolute",
+            left: "-9999px",
+            top: "8px",
+            zIndex: 100,
+            padding: "8px 14px",
+            background: "var(--bg-raised)",
+            color: "var(--text)",
+            borderRadius: "var(--r-sm)",
+          }}
+          onFocus={(e) => {
+            (e.target as HTMLAnchorElement).style.left = "8px";
+          }}
+          onBlur={(e) => {
+            (e.target as HTMLAnchorElement).style.left = "-9999px";
+          }}
+        >
+          Skip to content
+        </a>
         <Navbar />
-        <main style={{ flex: 1, width: "100%", padding: "48px 0 64px" }}>{children}</main>
+        <main id="main-content" style={{ flex: 1, width: "100%", padding: "48px 0 64px" }}>{children}</main>
         <Footer />
       </body>
     </html>

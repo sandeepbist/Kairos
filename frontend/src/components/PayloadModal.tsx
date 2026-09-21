@@ -321,9 +321,10 @@ export function PayloadModal({
           {fields.map((field) => (
             <React.Fragment key={field.key}>
               <div>
-                <label className="field-label">{field.label}</label>
+                <label className="field-label" htmlFor={`payload-${targetTool}-${field.key}`}>{field.label}</label>
                 {field.kind === "textarea" ? (
                   <textarea
+                    id={`payload-${targetTool}-${field.key}`}
                     className="input"
                     style={{ resize: "vertical" }}
                     rows={field.rows ?? 3}
@@ -332,6 +333,7 @@ export function PayloadModal({
                   />
                 ) : field.kind === "select" ? (
                   <select
+                    id={`payload-${targetTool}-${field.key}`}
                     className="select"
                     value={fieldValue(field)}
                     onChange={(e) => handleChange(field.key, e.target.value)}
@@ -344,6 +346,7 @@ export function PayloadModal({
                   </select>
                 ) : (
                   <input
+                    id={`payload-${targetTool}-${field.key}`}
                     className={field.mono ? "input mono" : "input"}
                     type={
                       field.kind === "date" || field.kind === "datetime-local"

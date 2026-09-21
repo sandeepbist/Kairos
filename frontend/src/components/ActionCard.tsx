@@ -188,7 +188,7 @@ export function ActionCard({
           </span>
         </div>
 
-        <div className="meter" title={`Extraction confidence: ${Math.round(item.confidence * 100)}%`}>
+        <div className="meter" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(item.confidence * 100)} aria-label={`Extraction confidence ${Math.round(item.confidence * 100)} percent`} title={`Extraction confidence: ${Math.round(item.confidence * 100)}%`}>
           <div className="meter-track">
             <div
               className={`meter-fill ${tier}`}
@@ -293,6 +293,7 @@ export function ActionCard({
               <button
                 type="button"
                 onClick={handleReject}
+                aria-pressed={rejected}
                 className={`btn btn-sm ${rejected ? "btn-danger" : "btn-secondary"}`}
               >
                 {rejected ? "Dismissed" : "Dismiss"}
@@ -300,6 +301,7 @@ export function ActionCard({
               <button
                 type="button"
                 onClick={handleApprove}
+                aria-pressed={!rejected}
                 className={`btn btn-sm ${!rejected ? "btn-success" : "btn-secondary"}`}
               >
                 {!rejected ? "Approved" : "Approve"}

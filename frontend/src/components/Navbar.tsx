@@ -172,6 +172,7 @@ export function Navbar() {
                 <Link
                   key={link.href}
                   href={link.href}
+                  aria-current={active ? "page" : undefined}
                   style={{
                     padding: "6px 12px",
                     borderRadius: "var(--r-sm)",

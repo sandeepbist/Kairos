@@ -303,6 +303,7 @@ export default function IngestPage() {
         <textarea
           value={rawText}
           onChange={(e) => setRawText(e.target.value)}
+          aria-label="Conversation text to extract actions from"
           placeholder={
             mode === "export"
               ? "Paste the notetaker export — markdown, CSV-ish transcript, or Slack export JSON…"
@@ -314,7 +315,6 @@ export default function IngestPage() {
             width: "100%",
             background: "transparent",
             border: "none",
-            outline: "none",
             color: "var(--text)",
             fontSize: "0.875rem",
             lineHeight: 1.7,
@@ -363,7 +363,7 @@ export default function IngestPage() {
       </div>
 
       {error && (
-        <div className="notice notice-error rise rise-3" style={{ marginTop: "14px" }}>
+        <div className="notice notice-error rise rise-3" role="alert" style={{ marginTop: "14px" }}>
           {error}
         </div>
       )}
