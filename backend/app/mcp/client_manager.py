@@ -112,7 +112,24 @@ class McpClientManager:
             ),
         )
         connector = self.get_connector(tool)
-        result = await connector.execute(payload, sandbox_mode=effective_sandbox)
+        try:
+            result = await connector.execute(payload, sandbox_mode=effective_sandbox)
+        except Exception as exc:  # noqa: BLE001 — every connector raises
+            # ValueError on live-mode misconfiguration (missing token,
+            # domain, project key). A raise here must become a per-item
+            # failure, never a batch-killing workflow exception: without
+            # this guard one misconfigured item fails the whole workflow
+            # after 3 pointless retries and leaves the batch stuck
+            # "executing" with sibling results lost.
+            from app.core.redaction import redact_error
+
+            result = ExecutionResult(
+                tool=tool,
+                status="failed",
+                latency_ms=0,
+                error=redact_error(exc),
+                raw_response={"connector_exception": True},
+            )
 
         # 3. Record Execution Log & Update Action Item Status
         async with async_session_factory() as session:

@@ -111,18 +111,38 @@ async def test_notion_connector_execution():
 
 @pytest.mark.asyncio
 async def test_jira_connector_execution():
-    connector = mcp_client_manager.get_connector("jira")
-    payload = {
-        "project_key": "SEC",
-        "summary": "Implement Token Refresh Guard",
-        "issue_type": "Bug",
-        "priority": "High",
-    }
-    result = await connector.execute(payload, sandbox_mode=True)
-    assert result.status == "success"
-    assert result.tool == "jira"
-    assert "SEC-" in result.external_url
-    assert "atlassian.net" in result.external_url
+    # Self-sufficient precondition: the sandbox URL embeds the configured
+    # jira_domain, which other suites also write — seed our own value (and
+    # restore the prior one) so this test passes in any execution order.
+    from app.core.operator_settings import (
+        load_operator_settings,
+        save_operator_setting,
+    )
+    async with async_session_factory() as session:
+        prior = (await load_operator_settings(["tool_targets.jira_domain"])).get(
+            "tool_targets.jira_domain", ""
+        )
+        await save_operator_setting(
+            "tool_targets.jira_domain", "test.atlassian.net", session
+        )
+        await session.commit()
+    try:
+        connector = mcp_client_manager.get_connector("jira")
+        payload = {
+            "project_key": "SEC",
+            "summary": "Implement Token Refresh Guard",
+            "issue_type": "Bug",
+            "priority": "High",
+        }
+        result = await connector.execute(payload, sandbox_mode=True)
+        assert result.status == "success"
+        assert result.tool == "jira"
+        assert "SEC-" in result.external_url
+        assert "atlassian.net" in result.external_url
+    finally:
+        async with async_session_factory() as session:
+            await save_operator_setting("tool_targets.jira_domain", prior, session)
+            await session.commit()
 
 
 @pytest.mark.asyncio
@@ -594,3 +614,55 @@ async def test_github_labels_accept_string_or_list():
     finally:
         gc.connector_http_client = orig
         gc.GitHubConnector._get_token = orig_token
+
+
+# ---------------------------------------------------------
+# Test: connector exceptions become per-item failures (no raise)
+# ---------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_connector_exception_is_per_item_failure(monkeypatch):
+    """A raising connector (e.g. live-mode misconfiguration) must yield a
+    failed ExecutionResult — never propagate and fail the whole workflow."""
+    batch_id = str(uuid.uuid4())
+    item_id = str(uuid.uuid4())
+
+    async with async_session_factory() as session:
+        session.add(BatchModel(id=batch_id, raw_text="Sample text", status="executing"))
+        session.add(ActionItemModel(
+            id=item_id,
+            batch_id=batch_id,
+            description="File ticket without credentials",
+            suggested_tool="jira",
+            source_snippet="Sample",
+            confidence=0.9,
+            status="pending",
+        ))
+        await session.commit()
+
+    async def _boom(self, payload, sandbox_mode=True):
+        raise ValueError("Jira execution failed: No Jira OAuth token or API token found.")
+
+    monkeypatch.setattr(
+        "app.mcp.connectors.jira_connector.JiraConnector.execute", _boom
+    )
+    res = await mcp_client_manager.execute_action(
+        batch_id=batch_id,
+        item_id=item_id,
+        tool="jira",
+        payload={"project_key": "FIN", "summary": "x"},
+        item_description="File ticket without credentials",
+        sandbox_mode=False,
+    )
+    assert res.status == "failed"
+    assert "No Jira OAuth token" in (res.error or "")
+
+    async with async_session_factory() as session:
+        item_db = (
+            await session.execute(select(ActionItemModel).where(ActionItemModel.id == item_id))
+        ).scalar_one()
+        assert item_db.status == "failed"
+        logs = (
+            await session.execute(select(ExecutionLogModel).where(ExecutionLogModel.item_id == item_id))
+        ).scalars().all()
+        assert len(logs) == 1 and logs[0].status == "failed"
