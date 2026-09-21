@@ -80,9 +80,13 @@ class TodoistConnector(BaseConnector):
 
             headers = {"Authorization": f"Bearer {token}"}
             if idempotency_key:
-                # Todoist dedupes POSTs carrying a stable X-Request-Id: a
-                # Temporal retry after a crash lands on the original task
-                # instead of creating a duplicate.
+                # Best-effort duplicate suppression: X-Request-Id is honored
+                # by Todoist's Sync API command UUIDs, and is sent on REST
+                # calls on the chance the server dedupes it — but REST v2
+                # documents no idempotency contract, so this header alone
+                # is NOT a guarantee. True exactly-once for Todoist would
+                # mean driving task creation through the Sync API
+                # (item_add with the idempotency key as command uuid).
                 headers["X-Request-Id"] = idempotency_key
             body: dict[str, Any] = {
                 "content": content[:500],
