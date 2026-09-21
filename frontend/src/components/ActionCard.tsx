@@ -173,7 +173,7 @@ export function ActionCard({
               value={selectedTool}
               onChange={(e) => handleToolChange(e.target.value as TargetTool)}
               className={`tag tag-tool tag-${selectedTool}`}
-              style={{ cursor: "pointer", outline: "none" }}
+              style={{ cursor: "pointer" }}
               aria-label="Target tool"
             >
               {(Object.keys(TOOL_NAMES) as TargetTool[]).map((t) => (

@@ -102,7 +102,9 @@ body {
 }
 
 :focus-visible {
-  outline: 2px solid var(--line-focus);
+  /* Solid near-white: the old rgba(255,255,255,0.24) composited to ~2:1,
+     failing WCAG 2.4.11 (3:1 focus indicator). */
+  outline: 2px solid var(--text);
   outline-offset: 2px;
   border-radius: var(--r-sm);
 }
