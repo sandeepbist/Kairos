@@ -28,12 +28,14 @@ async def get_execution_history(
     logs_by_batch: dict[str, list] = {}
     items_by_batch: dict[str, list] = {}
     if batch_ids:
-        for log in await db.scalars(select(ExecutionLogModel)):
-            if log.batch_id in batch_ids:
-                logs_by_batch.setdefault(log.batch_id, []).append(log)
-        for item in await db.scalars(select(ActionItemModel)):
-            if item.batch_id in batch_ids:
-                items_by_batch.setdefault(item.batch_id, []).append(item)
+        for log in await db.scalars(
+            select(ExecutionLogModel).where(ExecutionLogModel.batch_id.in_(batch_ids))
+        ):
+            logs_by_batch.setdefault(log.batch_id, []).append(log)
+        for item in await db.scalars(
+            select(ActionItemModel).where(ActionItemModel.batch_id.in_(batch_ids))
+        ):
+            items_by_batch.setdefault(item.batch_id, []).append(item)
 
     history = []
     for b in batches:

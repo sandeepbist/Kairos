@@ -285,7 +285,11 @@ export default function ReviewPage({
     setSubmitting(true);
     setError(null);
 
-    const decisionsList = Object.values(decisions);
+    const decisionsList = Object.values(decisions).filter(
+      // Prune decisions for items no longer in the batch (stale tabs):
+      // the workflow validator rejects the whole payload on any unknown id.
+      (d) => batch.items.some((i) => i.id === d.item_id)
+    );
     try {
       await approveBatch(batchId, decisionsList);
       router.push("/history");

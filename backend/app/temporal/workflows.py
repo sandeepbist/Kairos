@@ -143,7 +143,7 @@ class ProcessBatchWorkflow:
                 )
                 continue
 
-            action = decision.get("action") or decision.get("decision") or "APPROVE"
+            action = decision.get("action") or decision.get("decision") or "REJECT"
             rejection_reason = decision.get("rejection_reason")
 
             # Find matching item in routed_items
@@ -151,7 +151,15 @@ class ProcessBatchWorkflow:
             suggested_tool = original_item.get("suggested_tool", "task_ledger")
             description = original_item.get("description", "")
 
-            if action == "REJECT":
+            # Fail closed: only explicit APPROVE / MODIFY_AND_APPROVE
+            # execute. Unknown or missing actions take the reject path so
+            # a malformed decision can never trigger a side effect.
+            if action not in ("APPROVE", "MODIFY_AND_APPROVE"):
+                if action != "REJECT":
+                    rejection_reason = (
+                        (rejection_reason + "; " if rejection_reason else "")
+                        + f"Unknown action '{action}' treated as reject"
+                    )
                 # Reject item activity
                 await workflow.execute_activity(
                     reject_item_activity,

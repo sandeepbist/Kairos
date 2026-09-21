@@ -70,9 +70,20 @@ async def persist_extracted_items_activity(
             f"{len(routed_items)} items ready for review",
         )
 
-        # Insert items
+        # Insert items, skipping ids already persisted for this batch:
+        # Temporal retries this activity (maximum_attempts=3), and a retry
+        # after a post-commit crash would otherwise re-insert fixed ids and
+        # raise PK IntegrityErrors.
+        existing_ids = set(
+            await session.scalars(
+                select(ActionItemModel.id).where(ActionItemModel.batch_id == batch_id)
+            )
+        )
         for item in routed_items:
             item_id = item.get("id")
+            if item_id in existing_ids:
+                item_ids.append(item_id)
+                continue
             item_model = ActionItemModel(
                 id=item_id,
                 batch_id=batch_id,
@@ -305,7 +316,6 @@ async def ingest_gmail_history_activity() -> dict[str, Any]:
 
     import httpx
 
-    from app.core.redaction import redact_error
     from app.db.session import async_session_factory as _factory
     token = await _get_gmail_access_token()
     if not token:
@@ -318,6 +328,12 @@ async def ingest_gmail_history_activity() -> dict[str, Any]:
         rec = res.scalar_one_or_none()
         stored = _json.loads(rec.scopes) if rec and rec.scopes else {}
         history_id = stored.get("history_id", 0)
+        # Threads that failed in a previous poll are retried by explicit
+        # thread id (bounded) — the history watermark only moves forward,
+        # so without this list a failed thread would be skipped forever.
+        retry_queue = [
+            t for t in (stored.get("failed_threads") or []) if isinstance(t, str)
+        ][:20]
 
     headers = {"Authorization": f"Bearer {token}"}
     async with httpx.AsyncClient(timeout=30.0) as client:
@@ -350,14 +366,22 @@ async def ingest_gmail_history_activity() -> dict[str, Any]:
                     thread_ids.append(mid)
 
         ingested = 0
-        for tid in thread_ids[:10]:  # bounded per poll; Schedule catches up next cycle
+        failed: list[str] = []
+
+        async def _ingest_thread(tid: str) -> bool:
+            """Fetches one thread and ingests it as a batch. True on success."""
+            from app.core.redaction import redact_error as _redact
+
             thread = await client.get(
                 f"https://gmail.googleapis.com/gmail/v1/users/me/threads/{tid}",
                 params={"format": "full"},
                 headers=headers,
             )
             if not thread.is_success:
-                continue
+                activity.logger.warning(
+                    "Gmail thread %s fetch failed: http_%s", tid, thread.status_code,
+                )
+                return False
             body_parts: list[str] = []
             subject = ""
             for msg in thread.json().get("messages", []):
@@ -372,7 +396,7 @@ async def ingest_gmail_history_activity() -> dict[str, Any]:
                 if snippet:
                     body_parts.append(snippet)
             if not body_parts:
-                continue
+                return True  # nothing to ingest — not a failure, don't retry
             text = f"[{subject}]\n\n" + "\n".join(body_parts)
             # Reuse the standard ingest core so polled threads get
             # identical batch handling to pasted text.
@@ -381,19 +405,37 @@ async def ingest_gmail_history_activity() -> dict[str, Any]:
             async with _factory() as session:
                 try:
                     await create_and_start_batch(text, "email_thread", session)
-                    ingested += 1
+                    return True
                 except Exception as inner:  # noqa: BLE001 — one thread must not kill the poll
                     activity.logger.warning(
                         "Gmail thread %s ingest failed: %s",
-                        tid, redact_error(inner),
+                        tid, _redact(inner),
                     )
-        # Advance the watermark to the server's current historyId
+                    return False
+
+        # Retry threads that failed in previous polls first (explicit ids —
+        # the history cursor cannot rewind to them).
+        for tid in retry_queue:
+            if await _ingest_thread(tid):
+                ingested += 1
+            else:
+                failed.append(tid)
+        for tid in thread_ids[:10]:  # bounded per poll; Schedule catches up next cycle
+            if tid in retry_queue:
+                continue  # already retried above; don't double-ingest
+            if await _ingest_thread(tid):
+                ingested += 1
+            else:
+                failed.append(tid)
+        # Advance the watermark to the server's current historyId, but
+        # persist the failed thread ids alongside it so they are retried
+        # next poll instead of being skipped forever.
         new_history = int(hist.json().get("historyId", history_id))
-        await _store_history_id(new_history)
+        await _store_history_id(new_history, failed)
         return {"polled": True, "ingested": ingested, "history_id": new_history}
 
 
-async def _store_history_id(history_id: int) -> None:
+async def _store_history_id(history_id: int, failed_threads: list[str] | None = None) -> None:
     import json as _json2
 
     from app.db.models import OAuthTokenModel
@@ -407,6 +449,8 @@ async def _store_history_id(history_id: int) -> None:
         if rec:
             stored = _json2.loads(rec.scopes) if rec.scopes else {}
             stored["history_id"] = history_id
+            if failed_threads is not None:
+                stored["failed_threads"] = failed_threads[:20]
             rec.scopes = _json2.dumps(stored)
             await session.commit()
 
@@ -565,18 +609,21 @@ async def slack_socket_poll_activity() -> dict[str, Any]:
 
         from app.api.endpoints.batches import create_and_start_batch
 
+        succeeded = False
         async with async_session_factory() as session:
             try:
                 await create_and_start_batch(text, "slack_conversation", session)
                 ingested += 1
+                succeeded = True
             except Exception as inner:  # noqa: BLE001 — one thread must not kill the cycle
                 activity.logger.warning(
                     "Slack thread ingest failed: %s", redact_error(inner)
                 )
-        # Mark every ingested message seen only after the batch lands;
-        # a failed ingest retries next cycle.
-        for msg in msgs:
-            seen.add(msg["client_msg_id"] or f"{msg['channel']}:{msg['ts']}")
+        # Mark messages seen only after the batch lands; a failed ingest
+        # leaves its messages unmarked so the next cycle retries them.
+        if succeeded:
+            for msg in msgs:
+                seen.add(msg["client_msg_id"] or f"{msg['channel']}:{msg['ts']}")
 
     await _store_slack_seen_state(seen)
     return {"polled": True, "ingested": ingested, "events": len(collected)}
