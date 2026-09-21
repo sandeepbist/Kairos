@@ -45,6 +45,9 @@ class TaskLedgerConnector(BaseConnector):
                     "notes": str(notes),
                     "priority": str(priority),
                     "due_date": str(due_date) if due_date else None,
+                    # Internal sink: the execution idempotency key doubles
+                    # as the ledger dedup token for exactly-once retries.
+                    "external_ref": idempotency_key,
                 },
             )
 

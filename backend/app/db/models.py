@@ -148,6 +148,10 @@ class TaskLedgerModel(Base):
     priority = Column(String(20), nullable=False, default="medium")
     due_date = Column(String(50), nullable=True)
     status = Column(String(30), nullable=False, default="open", index=True)  # open, completed, deleted
+    # Caller-supplied dedup token (the execution idempotency key, UUID).
+    # Unique so a crash-retry racing/retreading the same logical task
+    # resolves to the original row instead of inserting a duplicate.
+    external_ref = Column(String(64), nullable=True, unique=True, index=True)
     created_at = Column(DateTime(timezone=True), default=utc_now, nullable=False)
     updated_at = Column(DateTime(timezone=True), default=utc_now, onupdate=utc_now, nullable=False)
 

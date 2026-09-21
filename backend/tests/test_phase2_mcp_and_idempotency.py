@@ -742,3 +742,44 @@ async def test_todoist_sends_stable_idempotency_key():
     finally:
         tc.connector_http_client = orig_client
         tc.TodoistConnector._get_token = orig_token
+
+
+# ---------------------------------------------------------
+# Test: ledger exactly-once on external_ref
+# ---------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_ledger_create_task_idempotent_on_external_ref():
+    """Same external_ref twice -> same row, no duplicate. Distinct refs
+    (and ref-less calls) still create distinct rows."""
+    from app.db.models import TaskLedgerModel
+
+    ref = f"test-ref-{uuid.uuid4().hex[:8]}"
+    t1 = await create_task(title="Dedup me", external_ref=ref)
+    t2 = await create_task(title="Dedup me", external_ref=ref)
+    assert t1["id"] == t2["id"]
+
+    connector = mcp_client_manager.get_connector("task_ledger")
+    key = str(uuid.uuid4())
+    r1 = await connector.execute({"title": "Via connector"}, idempotency_key=key)
+    r2 = await connector.execute({"title": "Via connector"}, idempotency_key=key)
+    assert r1.status == "success" and r2.status == "success"
+    assert r1.external_url == r2.external_url
+
+    n1 = await create_task(title="No ref one")
+    n2 = await create_task(title="No ref two")
+    assert n1["id"] != n2["id"]
+
+    async with async_session_factory() as session:
+        ref_rows = (
+            await session.execute(
+                select(TaskLedgerModel).where(TaskLedgerModel.external_ref == ref)
+            )
+        ).scalars().all()
+        assert len(ref_rows) == 1
+        key_rows = (
+            await session.execute(
+                select(TaskLedgerModel).where(TaskLedgerModel.external_ref == key)
+            )
+        ).scalars().all()
+        assert len(key_rows) == 1

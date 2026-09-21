@@ -52,10 +52,30 @@ async def create_task(
     notes: str = "",
     priority: str = "medium",
     due_date: str | None = None,
+    external_ref: str | None = None,
 ) -> dict[str, Any]:
-    """Creates a new record in the task_ledger_tasks table."""
-    task_id = str(uuid.uuid4())
+    """Creates a new record in the task_ledger_tasks table.
+
+    external_ref is a caller-supplied dedup token: when present, an
+    existing row with the same ref is returned instead of inserting a
+    duplicate, so execution retries are exactly-once. The unique DB
+    constraint covers the check-then-act race (IntegrityError falls
+    back to re-selecting the winner).
+    """
+    from sqlalchemy.exc import IntegrityError
+
     async with async_session_factory() as session:
+        if external_ref:
+            existing = (
+                await session.execute(
+                    select(TaskLedgerModel).where(
+                        TaskLedgerModel.external_ref == external_ref
+                    )
+                )
+            ).scalar_one_or_none()
+            if existing is not None:
+                return _task_dict(existing)
+        task_id = str(uuid.uuid4())
         task = TaskLedgerModel(
             id=task_id,
             title=title,
@@ -63,9 +83,22 @@ async def create_task(
             priority=priority.lower() if priority else "medium",
             due_date=due_date,
             status="open",
+            external_ref=external_ref,
         )
         session.add(task)
-        await session.commit()
+        try:
+            await session.commit()
+        except IntegrityError:
+            # Lost the insert race: another call created this ref first.
+            await session.rollback()
+            existing = (
+                await session.execute(
+                    select(TaskLedgerModel).where(
+                        TaskLedgerModel.external_ref == external_ref
+                    )
+                )
+            ).scalar_one()
+            return _task_dict(existing)
         await session.refresh(task)
         return _task_dict(task)
 
