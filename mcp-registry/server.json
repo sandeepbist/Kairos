@@ -3,7 +3,7 @@
   "name": "io.github.sandeepbist/kairos",
   "title": "Kairos Task Ledger MCP Server",
   "description": "Approve transcript action items into 12 tools; includes a standalone Postgres task ledger.",
-  "version": "1.0.0",
+  "version": "0.1.0",
   "websiteUrl": "https://github.com/sandeepbist/Kairos",
   "repository": {
     "url": "https://github.com/sandeepbist/Kairos",
@@ -14,7 +14,7 @@
       "registryType": "pypi",
       "registryVersion": "1.0",
       "identifier": "kairos-task-ledger",
-      "version": "1.0.0",
+      "version": "0.1.0",
       "transport": {
         "type": "stdio"
       },

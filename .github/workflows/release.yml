@@ -36,6 +36,21 @@ jobs:
             exit 1
           fi
           echo "Tag ${tag} matches backend/VERSION (${version})"
+      - name: Verify registry descriptor matches backend/VERSION
+        run: |
+          python3 - <<'EOF'
+          import json
+          version = open("backend/VERSION").read().strip()
+          desc = json.load(open("mcp-registry/server.json"))
+          versions = {"server.json version": desc.get("version")}
+          for pkg in desc.get("packages", []):
+              versions[f"package {pkg.get('identifier')}"] = pkg.get("version")
+          bad = {k: v for k, v in versions.items() if v != version}
+          if bad:
+              print(f"::error::mcp-registry/server.json drifted from backend/VERSION ({version}): {bad}")
+              raise SystemExit(1)
+          print(f"registry descriptor matches backend/VERSION ({version})")
+          EOF
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
