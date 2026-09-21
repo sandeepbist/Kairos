@@ -15,7 +15,10 @@ from app.config import settings
 
 logger = logging.getLogger(__name__)
 
-# Header form is preferred; query param supported for curl/demos and SSE.
+# Header form is preferred; query param is honored ONLY on the SSE event
+# streams, where browsers (EventSource) cannot set headers. Everywhere
+# else a query-string key is ignored so operator keys stay out of URLs,
+# access logs, and shell history.
 _api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
 _api_key_query = APIKeyQuery(name="api_key", auto_error=False)
 
@@ -47,7 +50,10 @@ async def require_api_key(
     is allowed through with a warning, so a fresh checkout still boots.
     Production config validation guarantees this cannot happen there.
     """
-    provided = header_key or query_key
+    provided = header_key
+    if provided is None and query_key:
+        if request.method == "GET" and request.url.path.endswith("/events"):
+            provided = query_key
     expected_digest = _configured_key_digest()
 
     if expected_digest is None:

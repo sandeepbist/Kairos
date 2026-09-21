@@ -44,11 +44,17 @@ def test_wrong_key_rejected(client, monkeypatch):
     assert "Invalid API key" in res.json()["detail"]
 
 
-def test_valid_key_header_and_query_accepted(client, monkeypatch):
+def test_valid_key_header_accepted_and_query_scoped_to_sse(client, monkeypatch):
     from app.core import auth
     monkeypatch.setattr(auth.settings, "API_KEY", TEST_KEY)
     assert client.get("/api/history", headers=AUTHED).status_code == 200
-    assert client.get(f"/api/history?api_key={TEST_KEY}").status_code == 200
+    # Query-string keys are scoped to the SSE event streams (EventSource
+    # cannot send headers); elsewhere they are ignored so keys stay out
+    # of URLs and access logs.
+    assert client.get(f"/api/history?api_key={TEST_KEY}").status_code == 401
+    assert client.get("/api/batches/nope/events").status_code == 401
+    res = client.get(f"/api/batches/nope/events?api_key={TEST_KEY}")
+    assert res.status_code == 404  # auth passed, batch id unknown
 
 
 def test_all_protected_routes_require_key(client, monkeypatch):
