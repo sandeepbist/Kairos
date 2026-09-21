@@ -384,3 +384,18 @@ async def test_extraction_provider_chain_fallback_and_reask():
     a, b = FakeLLM("fail"), FakeLLM("fail")
     items, errors = await _invoke_extraction_llm("text", [("a", a), ("b", b)], "sys")
     assert items == [] and len(errors) == 2
+
+
+def test_cors_preflight_allows_put_patch(client):
+    """PUT /connectors/settings and PATCH /webhooks/{id} exist, so the
+    CORS allow-list must include them for direct API consumers."""
+    for method in ("PUT", "PATCH"):
+        res = client.options(
+            "/api/history",
+            headers={
+                "Origin": "http://localhost:3000",
+                "Access-Control-Request-Method": method,
+            },
+        )
+        allowed = res.headers.get("access-control-allow-methods", "")
+        assert method in allowed, f"{method} missing from {allowed!r}"
