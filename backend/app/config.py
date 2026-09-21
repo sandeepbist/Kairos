@@ -142,7 +142,6 @@ class Settings(BaseSettings):
 
     # Ingestion & Guardrail Thresholds
     # Hard input bounds (schema-level, memory safety)
-    MAX_INPUT_TOKENS: int = 3000  # legacy default; effective ceiling is SINGLE_PASS_TOKENS
     MAX_INPUT_CHARS: int = 50_000
     # Single-pass LLM extraction ceiling: below this, one call handles the
     # whole document; above it, extraction switches to chunked map-reduce.
