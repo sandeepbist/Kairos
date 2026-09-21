@@ -41,9 +41,21 @@ async function parseError(res: Response, fallback: string): Promise<string> {
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  // Default 30s timeout so a hung backend surfaces as an error instead
+  // of a forever spinner; callers may pass their own signal to override.
+  // (SSE streams use EventSource, not this wrapper, and are unaffected.)
   const res = await fetch(path, {
+    signal: AbortSignal.timeout(30_000),
     ...init,
     headers: { "Content-Type": "application/json", ...init?.headers },
+  }).catch((err: unknown) => {
+    if (err instanceof DOMException && err.name === "TimeoutError") {
+      throw new ApiError(
+        "Request timed out after 30s. Verify the backend is reachable.",
+        408
+      );
+    }
+    throw err;
   });
   if (!res.ok) {
     const message = await parseError(res, `Request failed (${res.status})`);
