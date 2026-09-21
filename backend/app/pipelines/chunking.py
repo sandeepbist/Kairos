@@ -56,6 +56,33 @@ def chunk_transcript(
     else:
         blocks = [p.strip("\n") for p in text.split("\n\n") if p.strip()]
 
+    # A single block over budget (monologue with no blank lines, one
+    # giant speaker turn) would otherwise pass through whole and defeat
+    # the ceiling. Force-split such blocks by lines, preserving order.
+    # Word counts (not per-line estimate floors) drive the budget so the
+    # joined piece measures at or under budget exactly.
+    split_blocks: list[str] = []
+    for block in blocks:
+        while True:
+            if not block.strip() or int(len(block.split()) * 1.33) <= max_chunk_tokens:
+                break
+            lines = block.splitlines()
+            piece: list[str] = []
+            piece_words = 0
+            while lines:
+                line_words = len(lines[0].split())
+                if piece and int((piece_words + line_words) * 1.33) > max_chunk_tokens:
+                    break
+                piece.append(lines.pop(0))
+                piece_words += line_words
+            if not piece:  # one pathological line exceeds budget alone
+                piece.append(lines.pop(0))
+            split_blocks.append("\n".join(piece))
+            block = "\n".join(lines)
+        if block.strip():
+            split_blocks.append(block)
+    blocks = split_blocks
+
     # Greedily pack blocks into chunks under the token budget.
     chunks: list[list[str]] = []
     current: list[str] = []
@@ -70,11 +97,18 @@ def chunk_transcript(
     if current:
         chunks.append(current)
 
-    # Merge trailing crumbs into the previous chunk.
+    # Merge trailing crumbs into the previous chunk — but never past
+    # the budget (the merge must not reintroduce the overrun the
+    # splitter just eliminated). An unmergeable crumb stays its own
+    # chunk: one extra LLM call beats an over-context call.
     packed: list[str] = ["\n\n".join(parts) for parts in chunks]
     while len(packed) >= 2 and estimate_tokens(packed[-1]) < _MIN_CHUNK_TOKENS:
         tail = packed.pop()
-        packed[-1] = packed[-1] + "\n\n" + tail
+        if estimate_tokens(packed[-1]) + estimate_tokens(tail) <= max_chunk_tokens:
+            packed[-1] = packed[-1] + "\n\n" + tail
+        else:
+            packed.append(tail)
+            break
     return packed
 
 

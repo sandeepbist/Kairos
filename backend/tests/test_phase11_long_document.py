@@ -110,3 +110,18 @@ def test_very_long_input_warns_and_caps():
     inner = wrapper.replace("<untrusted_source_content source_type='meeting_transcript'>\n", "").replace("\n</untrusted_source_content>", "")
     assert len(inner) <= settings.MAX_INPUT_CHARS
     assert any("exceeded" in w for w in out["warning_flags"])
+
+
+def test_oversized_monologue_block_still_splits():
+    """A single speaker turn over budget (no blank lines) must split by
+    lines instead of passing through whole and defeating the ceiling."""
+    from app.pipelines.chunking import chunk_transcript, estimate_tokens
+
+    lines = [f"Alex keeps talking about topic number {n} in great detail" for n in range(400)]
+    mono = "Alex: " + "\n".join(lines)
+    assert estimate_tokens(mono) > 2000
+    chunks = chunk_transcript(mono, 500)
+    assert len(chunks) > 1
+    assert all(estimate_tokens(c) <= 500 for c in chunks)
+    # No content lost across the split.
+    assert "topic number 399" in chunks[-1]
