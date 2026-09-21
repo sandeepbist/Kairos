@@ -181,3 +181,25 @@ async def test_hybrid_matching_and_recency_weights():
     assert decision.get("neighbors"), "few-shot neighbors must be surfaced"
     nb = decision["neighbors"][0]
     assert set(nb) >= {"description", "final_tool", "similarity", "matched_by"}
+
+
+@pytest.mark.asyncio
+async def test_route_node_survives_memory_failure(monkeypatch):
+    """A routing-memory outage must not sink the batch: items keep
+    their uncalibrated suggestion."""
+    from app.pipelines.route import route_node
+    import app.pipelines.route as route_mod
+
+    async def _boom(**kwargs):
+        raise RuntimeError("memory down")
+
+    monkeypatch.setattr(route_mod.routing_memory, "query_routing_preference", _boom)
+    state = {
+        "extracted_items": [
+            {"description": "File the bug", "suggested_tool": "jira", "confidence": 0.9},
+        ],
+        "source_type": "meeting_transcript",
+    }
+    out = await route_node(state)
+    assert out["routed_items"][0]["suggested_tool"] == "jira"
+    assert out["routed_items"][0]["confidence"] == 0.9
