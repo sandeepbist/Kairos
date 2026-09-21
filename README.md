@@ -416,6 +416,17 @@ worker, `pg_restore --clean` into a fresh database, restore the paired
 key as `ENCRYPTION_KEY`, restart, then check `/connectors` shows your
 providers connected — that proves the vault decrypts.
 
+In-flight batches also live in Temporal's store (the `temporaldata`
+volume in compose), which `pg_dump` does not cover. Snapshot that
+volume alongside every dump (e.g. `docker run --rm -v
+kairos-prod_temporaldata:/data -v "$PWD/backups:/out" alpine tar -czf
+/out/temporaldata-$STAMP.tgz /data`). If you restore Postgres without
+it, workflows vanish while their batches still read
+processing/awaiting_approval — re-drive those batches from the source
+text and expire the orphans. For anything beyond single-host deploys,
+replace dev-mode Temporal with an external Temporal service backed by
+real storage.
+
 Key rotation is zero-downtime: generate a fresh Fernet key, run
 `ENCRYPTION_KEY=<old> ENCRYPTION_KEY_NEW=<new> python scripts/rotate_fernet_key.py`
 (the script pre-flights every row, aborts before any write on the
