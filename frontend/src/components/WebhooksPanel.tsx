@@ -156,6 +156,15 @@ export function WebhooksPanel() {
       setMessage({ text: "Enter a webhook URL first", type: "error" });
       return;
     }
+    try {
+      const parsed = new URL(url.trim());
+      if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
+        throw new Error("bad scheme");
+      }
+    } catch {
+      setMessage({ text: "Enter a valid http(s) webhook URL", type: "error" });
+      return;
+    }
     setBusy(true);
     setMessage(null);
     try {

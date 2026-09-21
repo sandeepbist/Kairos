@@ -112,12 +112,12 @@ export default function HistoryPage() {
       </div>
 
       {error && (
-        <div className="notice notice-error" style={{ marginBottom: "18px" }}>
+        <div className="notice notice-error" role="alert" style={{ marginBottom: "18px" }}>
           {error}
         </div>
       )}
       {notice && (
-        <div className="notice notice-ok" style={{ marginBottom: "18px" }}>
+        <div className="notice notice-ok" role="status" style={{ marginBottom: "18px" }}>
           {notice}
         </div>
       )}

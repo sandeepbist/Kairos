@@ -407,7 +407,7 @@ export default function SettingsPage() {
       </div>
 
       {message && (
-        <div className={`${noticeClass} fade-in`} style={{ marginBottom: "20px" }}>
+        <div className={`${noticeClass} fade-in`} role={message.type === "error" ? "alert" : "status"} style={{ marginBottom: "20px" }}>
           {message.text}
         </div>
       )}
