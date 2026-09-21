@@ -127,3 +127,36 @@ def test_deterministic_extractor_survives_bare_colon_line():
         "Sarah: please file this ticket now", "meeting_transcript"
     )
     assert items2 and items2[0].get("speaker") == "Sarah"
+
+
+@pytest.mark.asyncio
+async def test_llm_valid_empty_stays_empty_but_failure_falls_back(monkeypatch):
+    """A clean LLM [] means 'no tasks' and must be honored; provider
+    errors (not empty results) trigger the deterministic safety net."""
+    import app.pipelines.extract as ex
+
+    async def _fake_creds():
+        return ("fake-gemini-key", None)
+
+    async def _empty_ok(cleaned_text, providers, system_prompt):
+        return [], []
+
+    async def _failed(cleaned_text, providers, system_prompt):
+        return [], ["provider exploded"]
+
+    monkeypatch.setattr(ex.settings, "APP_ENV", "development")
+    monkeypatch.setattr(ex, "_get_vault_llm_credentials", _fake_creds)
+
+    state = {
+        "raw_text": "Sarah: please file this ticket now",
+        "cleaned_text": "Sarah: please file this ticket now",
+        "source_type": "meeting_transcript",
+        "errors": [],
+    }
+    monkeypatch.setattr(ex, "_invoke_extraction_llm", _empty_ok)
+    out = await ex.extract_node(dict(state))
+    assert out["extracted_items"] == []
+
+    monkeypatch.setattr(ex, "_invoke_extraction_llm", _failed)
+    out2 = await ex.extract_node(dict(state))
+    assert len(out2["extracted_items"]) >= 1

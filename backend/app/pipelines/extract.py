@@ -533,6 +533,7 @@ async def _invoke_extraction_llm(
     errors: list[str] = []
     for name, llm in providers:
         structured = llm.with_structured_output(ExtractedActionItemList, method="json_schema")
+        last_error: str | None = None
         for attempt in (1, 2):  # attempt 2 = validation reask
             try:
                 messages = [
@@ -541,8 +542,9 @@ async def _invoke_extraction_llm(
                 ]
                 if attempt == 2:
                     messages.append(SystemMessage(
-                        content="Your previous output failed schema validation. "
-                        "Return the corrected JSON only."
+                        content="Your previous output failed schema validation"
+                        + (f" with this error: {last_error}." if last_error else ".")
+                        + " Return the corrected JSON only."
                     ))
                 response: ExtractedActionItemList = await structured.ainvoke(messages)
                 return [item.model_dump() for item in response.items], errors
@@ -550,6 +552,7 @@ async def _invoke_extraction_llm(
                 from app.core.redaction import redact_error
 
                 safe = redact_error(e)
+                last_error = safe
                 # A reask retry only makes sense for schema/validation
                 # mistakes the model can correct; transport, quota, and
                 # auth failures fall through to the next provider at once.
@@ -682,6 +685,20 @@ async def extract_node(state: AgentState) -> dict[str, Any]:
                     chunk, chain, system_prompt
                 )
                 errors.extend(chunk_errors)
+                if not chunk_items and chunk_errors:
+                    # Provider failed on this chunk: deterministic safety
+                    # net beats silent data loss. Guarded — a fallback
+                    # crash must not take down the whole node.
+                    try:
+                        chunk_items = deterministic_fallback_extractor(
+                            chunk, source_type, targets
+                        )
+                    except Exception:  # noqa: BLE001 — drop the chunk, keep the batch
+                        logger.warning(
+                            "Chunk %d deterministic fallback failed; dropping chunk.",
+                            ci + 1,
+                        )
+                        chunk_items = []
                 per_chunk.append(chunk_items)
                 await record_event(
                     state.get("batch_id", ""),
@@ -708,10 +725,15 @@ async def extract_node(state: AgentState) -> dict[str, Any]:
                 formatted_items.append(item_dict)
             return {"extracted_items": formatted_items, "errors": errors}
 
-        # Whole chain failed or returned nothing: deterministic extraction.
-        logger.warning("All LLM providers failed; using deterministic extractor.")
-        items = deterministic_fallback_extractor(raw_text, source_type, targets)
-        return {"extracted_items": items, "errors": errors}
+        if errors:
+            # Providers actually failed: deterministic safety net.
+            logger.warning("All LLM providers failed; using deterministic extractor.")
+            items = deterministic_fallback_extractor(raw_text, source_type, targets)
+            return {"extracted_items": items, "errors": errors}
+
+        # Valid empty: the chain ran clean and found no tasks. Honor it —
+        # inventing a task here would contradict the smarter system.
+        return {"extracted_items": [], "errors": errors}
 
     except Exception as e:
         from app.core.redaction import redact_error
