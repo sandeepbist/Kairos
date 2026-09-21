@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Inter, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import { Navbar } from "@/components/Navbar";
@@ -20,6 +20,11 @@ export const metadata: Metadata = {
   title: "Kairos — Ambient Action Engine",
   description:
     "Turn unstructured conversations into executed actions across Notion, Jira, Calendar, and the Task Ledger — with human approval at every step.",
+  icons: { icon: "/favicon.ico" },
+};
+
+export const viewport: Viewport = {
+  themeColor: "#09090b",
 };
 
 export default function RootLayout({

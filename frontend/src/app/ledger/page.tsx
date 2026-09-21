@@ -3,28 +3,8 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { completeLedgerTask, deleteLedgerTask, listLedgerTasks } from "@/lib/api";
 import { errorMessage } from "@/lib/errors";
+import { relativeTime } from "@/lib/time";
 import { LedgerTask } from "@/lib/types";
-
-/**
- * Local copy of the history page's relativeTime — page files can't be
- * imported across, and the semantics are shared on purpose: "just now"
- * under a minute, Xm/Xh/Xd after, full locale date beyond a week; the
- * title attribute always carries the absolute local timestamp.
- */
-function relativeTime(iso: string): { text: string; title: string } {
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return { text: "", title: "" };
-  const title = date.toLocaleString();
-  const diffMs = Date.now() - date.getTime();
-  if (diffMs < 60_000) return { text: "just now", title };
-  const minutes = Math.floor(diffMs / 60_000);
-  if (minutes < 60) return { text: `${minutes}m ago`, title };
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return { text: `${hours}h ago`, title };
-  const days = Math.floor(hours / 24);
-  if (days < 7) return { text: `${days}d ago`, title };
-  return { text: date.toLocaleDateString(), title };
-}
 
 type LedgerFilter = "open" | "completed" | "all";
 
