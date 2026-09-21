@@ -43,6 +43,7 @@ class GoogleTasksConnector(BaseConnector):
         self,
         payload: dict[str, Any],
         sandbox_mode: bool = False,
+        idempotency_key: str | None = None,
     ) -> ExecutionResult:
         start_time = time.time()
         try:

@@ -51,6 +51,7 @@ class JiraConnector(BaseConnector):
         self,
         payload: dict[str, Any],
         sandbox_mode: bool = True,
+        idempotency_key: str | None = None,
     ) -> ExecutionResult:
         start_time = time.time()
         # Operator-configured project key; no demo default — a live call

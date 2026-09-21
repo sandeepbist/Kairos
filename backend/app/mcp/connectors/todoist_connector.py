@@ -47,6 +47,7 @@ class TodoistConnector(BaseConnector):
         self,
         payload: dict[str, Any],
         sandbox_mode: bool = False,
+        idempotency_key: str | None = None,
     ) -> ExecutionResult:
         start_time = time.time()
         try:
@@ -78,6 +79,11 @@ class TodoistConnector(BaseConnector):
                 )
 
             headers = {"Authorization": f"Bearer {token}"}
+            if idempotency_key:
+                # Todoist dedupes POSTs carrying a stable X-Request-Id: a
+                # Temporal retry after a crash lands on the original task
+                # instead of creating a duplicate.
+                headers["X-Request-Id"] = idempotency_key
             body: dict[str, Any] = {
                 "content": content[:500],
                 "description": description[:500],

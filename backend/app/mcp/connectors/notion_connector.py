@@ -38,6 +38,7 @@ class NotionConnector(BaseConnector):
         self,
         payload: dict[str, Any],
         sandbox_mode: bool = True,
+        idempotency_key: str | None = None,
     ) -> ExecutionResult:
         start_time = time.time()
         title = payload.get("title") or payload.get("summary") or payload.get("description") or "Untitled Notion Page"

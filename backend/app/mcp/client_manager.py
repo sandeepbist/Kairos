@@ -112,8 +112,14 @@ class McpClientManager:
             ),
         )
         connector = self.get_connector(tool)
+        # Provider-native dedup token: deterministic UUID derived from the
+        # SHA256 hash, so every retry of this item presents the same key
+        # to APIs that honor one (Todoist X-Request-Id).
+        request_id = str(uuid.UUID(idempotency_hash[:32]))
         try:
-            result = await connector.execute(payload, sandbox_mode=effective_sandbox)
+            result = await connector.execute(
+                payload, sandbox_mode=effective_sandbox, idempotency_key=request_id
+            )
         except Exception as exc:  # noqa: BLE001 — every connector raises
             # ValueError on live-mode misconfiguration (missing token,
             # domain, project key). A raise here must become a per-item

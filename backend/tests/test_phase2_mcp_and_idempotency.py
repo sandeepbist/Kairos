@@ -640,7 +640,7 @@ async def test_connector_exception_is_per_item_failure(monkeypatch):
         ))
         await session.commit()
 
-    async def _boom(self, payload, sandbox_mode=True):
+    async def _boom(self, payload, sandbox_mode=True, idempotency_key=None):
         raise ValueError("Jira execution failed: No Jira OAuth token or API token found.")
 
     monkeypatch.setattr(
@@ -666,3 +666,79 @@ async def test_connector_exception_is_per_item_failure(monkeypatch):
             await session.execute(select(ExecutionLogModel).where(ExecutionLogModel.item_id == item_id))
         ).scalars().all()
         assert len(logs) == 1 and logs[0].status == "failed"
+
+
+# ---------------------------------------------------------
+# Test: Todoist X-Request-Id provider idempotency
+# ---------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_todoist_sends_stable_idempotency_key():
+    """Live-path Todoist POSTs carry X-Request-Id: stable across retries of
+    the same key (provider-side dedup on crash-retry), distinct per key.
+    execute_action threads a deterministic UUID end to end."""
+    import uuid as _uuid
+
+    import app.mcp.connectors.todoist_connector as tc
+
+    seen_headers = []
+
+    class FakeResp:
+        is_success = True
+        status_code = 200
+
+        def json(self):
+            return {"id": "abc123"}
+
+    class FakeClient:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *a):
+            return None
+
+        async def post(self, url, data=None, headers=None):
+            seen_headers.append(dict(headers or {}))
+            return FakeResp()
+
+    orig_client = tc.connector_http_client
+    orig_token = tc.TodoistConnector._get_token
+
+    async def _seeded_token(self):
+        return _runtime_fixture()
+
+    tc.connector_http_client = lambda timeout=15.0: FakeClient()
+    tc.TodoistConnector._get_token = _seeded_token
+    try:
+        connector = tc.TodoistConnector()
+        payload = {"content": "Buy milk", "priority": "high"}
+        key = "12345678-1234-5678-1234-567812345678"
+        other = "87654321-4321-8765-4321-876543218765"
+        r1 = await connector.execute(payload, sandbox_mode=False, idempotency_key=key)
+        r2 = await connector.execute(payload, sandbox_mode=False, idempotency_key=key)
+        r3 = await connector.execute(payload, sandbox_mode=False, idempotency_key=other)
+        assert r1.status == "success" and r2.status == "success"
+        assert seen_headers[0].get("X-Request-Id") == key
+        assert seen_headers[1].get("X-Request-Id") == key
+        assert seen_headers[2].get("X-Request-Id") == other
+
+        # End to end: execute_action derives a valid UUID from the hash.
+        batch_id = str(uuid.uuid4())
+        item_id = str(uuid.uuid4())
+        async with async_session_factory() as session:
+            session.add(BatchModel(id=batch_id, raw_text="t", status="executing"))
+            session.add(ActionItemModel(
+                id=item_id, batch_id=batch_id, description="Buy milk",
+                suggested_tool="todoist", source_snippet="t",
+                confidence=0.9, status="pending",
+            ))
+            await session.commit()
+        res = await mcp_client_manager.execute_action(
+            batch_id=batch_id, item_id=item_id, tool="todoist",
+            payload=payload, item_description="Buy milk", sandbox_mode=False,
+        )
+        assert res.status == "success"
+        _uuid.UUID(seen_headers[3]["X-Request-Id"])  # raises if not UUID-shaped
+    finally:
+        tc.connector_http_client = orig_client
+        tc.TodoistConnector._get_token = orig_token
