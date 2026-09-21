@@ -55,6 +55,13 @@ async def create_and_start_batch(
     batch — pasted, exported, or polled — gets identical status handling
     and telemetry.
     """
+    # source_type is interpolated into the extraction prompt's source tag:
+    # allowlist it here (the HTTP schema validates, but MCP callers pass
+    # free strings) so a crafted value can never break out of the tag.
+    if source_type not in (
+        "meeting_transcript", "email_thread", "slack_conversation", "general_notes",
+    ):
+        raise ValueError(f"Unknown source_type '{source_type}'.")
     batch_id = str(uuid.uuid4())
     workflow_id = f"batch-wf-{batch_id}"
 
