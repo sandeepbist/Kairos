@@ -108,8 +108,8 @@ class LinearConnector(BaseConnector):
                         latency_ms=int((time.time() - start_time) * 1000),
                         error=f"Linear teams query HTTP {teams.status_code}",
                     )
-                nodes = teams.json().get("data", {}).get("teams", {}).get("nodes", [])
-                team_id = (nodes[0]["id"] if nodes else None) or payload.get("team_id")
+                nodes = (teams.json().get("data") or {}).get("teams", {}).get("nodes", []) or []
+                team_id = payload.get("team_id") or (nodes[0]["id"] if nodes else None)
                 if not team_id:
                     return ExecutionResult(
                         tool=self.tool_name,

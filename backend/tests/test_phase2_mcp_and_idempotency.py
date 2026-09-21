@@ -890,3 +890,121 @@ async def test_mcp_transport_sends_bearer_token():
     assert captured.get("headers") == {"Authorization": "Bearer ya29.token"}
     assert getattr(captured.get("timeout"), "connect", captured.get("timeout")) == 15.0
     assert captured.get("closed") is True
+
+
+# ---------------------------------------------------------
+# Test: Linear explicit team wins; calendar input validation
+# ---------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_linear_explicit_team_id_wins():
+    """An operator-specified team_id must beat the first visible team."""
+    import app.mcp.connectors.linear_connector as lc
+
+    captured = {}
+
+    class FakeResp:
+        def __init__(self, payload, status=200):
+            self._payload = payload
+            self.status_code = status
+            self.is_success = 200 <= status < 300
+
+        def json(self):
+            return self._payload
+
+    class FakeClient:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *a):
+            return None
+
+        async def post(self, url, json=None, headers=None):
+            if "Teams" in (json or {}).get("query", ""):
+                return FakeResp({"data": {"teams": {"nodes": [{"id": "auto-team"}]}}})
+            captured.update((json or {}).get("variables", {}))
+            return FakeResp({"data": {"issueCreate": {"issue": {"id": "1", "url": "https://linear.app/i/1"}}}})
+
+    orig_client = lc.connector_http_client
+    orig_key = lc.LinearConnector._get_api_key
+
+    async def _seeded_key(self):
+        return "lin_test_key"
+
+    lc.connector_http_client = lambda timeout=15.0: FakeClient()
+    lc.LinearConnector._get_api_key = _seeded_key
+    try:
+        connector = lc.LinearConnector()
+        res = await connector.execute(
+            {"title": "T", "team_id": "EXPLICIT"}, sandbox_mode=False
+        )
+        assert res.status == "success"
+        assert captured.get("teamId") == "EXPLICIT"
+    finally:
+        lc.connector_http_client = orig_client
+        lc.LinearConnector._get_api_key = orig_key
+
+
+@pytest.mark.asyncio
+async def test_calendar_validates_times_and_attendees():
+    """Garbage datetimes and inverted ranges fail fast with a named
+    field; dict-form attendees resolve to their email."""
+    import pytest as _pt
+    import app.mcp.connectors.calendar_connector as cc
+
+    captured = {}
+
+    class FakeResp:
+        is_success = True
+        status_code = 200
+
+        def json(self):
+            return {"id": "evt1", "htmlLink": "https://cal/event/evt1"}
+
+    class FakeClient:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *a):
+            return None
+
+        async def post(self, url, json=None, headers=None):
+            captured.update(json or {})
+            return FakeResp()
+
+    orig_client = cc.connector_http_client
+    orig_token = cc.CalendarConnector._get_auth_token
+
+    async def _seeded_token(self):
+        return "ya29.test"
+
+    cc.connector_http_client = lambda timeout=10.0: FakeClient()
+    cc.CalendarConnector._get_auth_token = _seeded_token
+    try:
+        connector = cc.CalendarConnector()
+        with _pt.raises(ValueError, match="start_time"):
+            await connector.execute(
+                {"title": "x", "start_time": "not-a-date",
+                 "end_time": "2026-09-21T11:00:00+00:00"},
+                sandbox_mode=False,
+            )
+        with _pt.raises(ValueError, match="after start_time"):
+            await connector.execute(
+                {"title": "x", "start_time": "2026-09-21T11:00:00+00:00",
+                 "end_time": "2026-09-21T10:00:00+00:00"},
+                sandbox_mode=False,
+            )
+        res = await connector.execute(
+            {"title": "x", "start_time": "2026-09-21T10:00:00+00:00",
+             "end_time": "2026-09-21T11:00:00+00:00",
+             "attendees": [{"email": "a@b.c"}, "", "d@e.f"],
+             "reminder_minutes_before": "not-a-number"},
+            sandbox_mode=False,
+        )
+        assert res.status == "success"
+        assert captured["attendees"] == [{"email": "a@b.c"}, {"email": "d@e.f"}]
+        assert captured["reminders"]["overrides"][0]["minutes"] == 30
+        assert captured["start"]["dateTime"].startswith("2026-09-21T10:00:00")
+    finally:
+        cc.connector_http_client = orig_client
+        cc.CalendarConnector._get_auth_token = orig_token

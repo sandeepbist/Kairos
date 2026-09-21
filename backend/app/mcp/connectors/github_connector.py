@@ -25,14 +25,15 @@ GITHUB_API = "https://api.github.com"
 
 
 async def load_provider_token(provider: str) -> str | None:
-    """Reads one provider credential from the vault. The table holds at
-    most a dozen rows (unique provider), so scanning them and matching
-    in Python is both cheap and structurally injection-proof."""
+    """Reads one provider credential from the vault by provider."""
     async with async_session_factory() as session:
-        rows = await session.scalars(select(OAuthTokenModel))
-        for rec in rows:
-            if rec.provider == provider and rec.access_token_enc:
-                return decrypt_token(rec.access_token_enc)
+        rec = (
+            await session.execute(
+                select(OAuthTokenModel).where(OAuthTokenModel.provider == provider)
+            )
+        ).scalar_one_or_none()
+        if rec and rec.access_token_enc:
+            return decrypt_token(rec.access_token_enc)
     return None
 
 

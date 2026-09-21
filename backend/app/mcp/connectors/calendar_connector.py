@@ -2,6 +2,7 @@
 import time
 import os
 import uuid
+from datetime import datetime, timezone
 from typing import Any
 from sqlalchemy import select
 from app.db.session import async_session_factory
@@ -9,6 +10,36 @@ from app.db.models import OAuthTokenModel
 from app.core.security import decrypt_token
 from .base import BaseConnector, ExecutionResult
 from .http import connector_http_client
+
+
+def _parse_event_time(raw: Any, field: str) -> datetime:
+    """Parses an event time to an aware datetime for the API.
+
+    Accepts ISO-8601 (with or without offset); naive values are assumed
+    UTC rather than rejected. Raises ValueError with an operator-facing
+    message on garbage — a live 400 from Google either way, but ours
+    names the field and never books a wrong slot.
+    """
+    text = str(raw or "").strip()
+    try:
+        parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
+    except (ValueError, TypeError):
+        raise ValueError(
+            f"Calendar execution failed: {field} '{text}' is not a valid "
+            "ISO-8601 datetime."
+        )
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed
+
+
+def _clamp_reminder_minutes(raw: Any) -> int:
+    """Coerces the popup offset to an int in Google's 0–40320 range."""
+    try:
+        minutes = int(raw)
+    except (TypeError, ValueError):
+        return 30
+    return max(0, min(minutes, 40320))
 
 
 class CalendarConnector(BaseConnector):
@@ -78,6 +109,12 @@ class CalendarConnector(BaseConnector):
                 "required. Fill them during review (Edit payload) and "
                 "re-approve."
             )
+        start_dt = _parse_event_time(start_time_iso, "start_time")
+        end_dt = _parse_event_time(end_time_iso, "end_time")
+        if end_dt <= start_dt:
+            raise ValueError(
+                "Calendar execution failed: end_time must be after start_time."
+            )
         token = await self._get_auth_token()
         if not token:
             raise ValueError(
@@ -93,12 +130,16 @@ class CalendarConnector(BaseConnector):
         cal_body = {
             "summary": title,
             "description": "Scheduled by Kairos Ambient Action Agent",
-            "start": {"dateTime": start_time_iso},
-            "end": {"dateTime": end_time_iso},
-            "attendees": [{"email": str(a)} for a in attendees if a],
+            "start": {"dateTime": start_dt.isoformat()},
+            "end": {"dateTime": end_dt.isoformat()},
+            "attendees": [
+                {"email": a["email"] if isinstance(a, dict) else str(a)}
+                for a in attendees
+                if (a["email"] if isinstance(a, dict) else a)
+            ],
             "reminders": {
                 "useDefault": False,
-                "overrides": [{"method": "popup", "minutes": reminder_minutes}],
+                "overrides": [{"method": "popup", "minutes": _clamp_reminder_minutes(reminder_minutes)}],
             },
         }
 
@@ -126,7 +167,7 @@ class CalendarConnector(BaseConnector):
                         tool=self.tool_name,
                         status="failed",
                         latency_ms=latency_ms,
-                        error=f"Google Calendar API HTTP {resp.status_code}: {resp.text}",
+                        error=f"Google Calendar API HTTP {resp.status_code}: {resp.text[:500]}",
                     )
         except Exception as e:
             return ExecutionResult(
