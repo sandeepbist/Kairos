@@ -211,6 +211,9 @@ export default function ReviewPage({
             item_id: item.id,
             action: "REJECT",
             rejection_reason: "Dismissed by user during review",
+            // Preserved so a later re-approve restores the edits.
+            override_tool: prev[item.id]?.override_tool,
+            modified_payload: prev[item.id]?.modified_payload,
           },
         }));
       } else if (key === "e") {
@@ -262,6 +265,11 @@ export default function ReviewPage({
             item_id: item.id,
             action: "REJECT",
             rejection_reason: "Below confidence threshold",
+            // Kept so a later re-approve restores the operator's
+            // override instead of falling back to the suggestion. The
+            // workflow's reject path ignores these fields.
+            override_tool: decisions[item.id]?.override_tool,
+            modified_payload: decisions[item.id]?.modified_payload,
           };
     });
     setDecisions(updated);
@@ -275,6 +283,10 @@ export default function ReviewPage({
         item_id: item.id,
         action: "REJECT",
         rejection_reason: "Bulk dismissed by user",
+        // Preserved (not sent down the reject path) so a later
+        // re-approve restores the operator's override/payload edits.
+        override_tool: decisions[item.id]?.override_tool,
+        modified_payload: decisions[item.id]?.modified_payload,
       };
     });
     setDecisions(updated);
