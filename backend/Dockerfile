@@ -4,8 +4,11 @@
 FROM python:3.12-slim AS builder
 
 WORKDIR /build
-COPY requirements.txt .
-RUN pip install --no-cache-dir --target=/install -r requirements.txt
+# Pinned runtime set (requirements.lock), verified against the backend
+# suite — requirements.txt stays the human-editable source; re-lock after
+# changing it and re-run the suite before rebuilding prod images.
+COPY requirements.lock .
+RUN pip install --no-cache-dir --target=/install -r requirements.lock
 
 FROM python:3.12-slim AS runtime
 
