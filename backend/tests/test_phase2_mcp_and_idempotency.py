@@ -805,3 +805,46 @@ async def test_ledger_list_tasks_caps_limit():
     assert len(rows) == 200
     rows_all = await list_tasks()
     assert len(rows_all) <= 200
+
+
+# ---------------------------------------------------------
+# Test: connector-returned errors are redacted at persist time
+# ---------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_connector_error_text_redacted_in_log(monkeypatch):
+    """Provider HTTP bodies echoed in a failed ExecutionResult must not
+    persist raw secrets (mirrors the raised-exception redaction)."""
+    from app.mcp.connectors.base import ExecutionResult
+
+    batch_id = str(uuid.uuid4())
+    item_id = str(uuid.uuid4())
+    async with async_session_factory() as session:
+        session.add(BatchModel(id=batch_id, raw_text="t", status="executing"))
+        session.add(ActionItemModel(
+            id=item_id, batch_id=batch_id, description="x",
+            suggested_tool="jira", source_snippet="t",
+            confidence=0.9, status="pending",
+        ))
+        await session.commit()
+
+    async def _leaky(self, payload, sandbox_mode=True, idempotency_key=None):
+        return ExecutionResult(
+            tool="jira", status="failed",
+            error="Jira API HTTP 400: bad token ?api_key=sk-proj-SECRET1234567890abcdef",
+        )
+
+    monkeypatch.setattr(
+        "app.mcp.connectors.jira_connector.JiraConnector.execute", _leaky
+    )
+    res = await mcp_client_manager.execute_action(
+        batch_id=batch_id, item_id=item_id, tool="jira",
+        payload={"summary": "x"}, item_description="x", sandbox_mode=False,
+    )
+    assert res.status == "failed"
+    async with async_session_factory() as session:
+        log = (
+            await session.execute(select(ExecutionLogModel).where(ExecutionLogModel.item_id == item_id))
+        ).scalars().one()
+        assert "SECRET1234567890abcdef" not in (log.error or "")
+        assert "[REDACTED]" in (log.error or "")

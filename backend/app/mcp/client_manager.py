@@ -5,6 +5,7 @@ import uuid
 from typing import Any
 from sqlalchemy import select
 from app.config import settings
+from app.core.redaction import redact_error, redact_secrets
 from app.db.session import async_session_factory
 from app.db.models import ExecutionLogModel, ActionItemModel
 from .connectors import (
@@ -127,8 +128,6 @@ class McpClientManager:
             # this guard one misconfigured item fails the whole workflow
             # after 3 pointless retries and leaves the batch stuck
             # "executing" with sibling results lost.
-            from app.core.redaction import redact_error
-
             result = ExecutionResult(
                 tool=tool,
                 status="failed",
@@ -150,7 +149,10 @@ class McpClientManager:
                 external_url=result.external_url,
                 item_description=item_description or payload.get("title") or payload.get("summary") or "",
                 latency_ms=result.latency_ms,
-                error=result.error,
+                # Connector-returned errors (e.g. provider HTTP bodies)
+                # are redacted exactly like raised ones: both land in
+                # execution_logs and surface in the review UI.
+                error=redact_secrets(result.error) if result.error else None,
             )
             session.add(log_entry)
 
