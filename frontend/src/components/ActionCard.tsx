@@ -62,9 +62,10 @@ export function ActionCard({
 
   // Re-sync local tool/payload when the parent decision changes (bulk
   // approve / dismiss-all / approve-high-confidence). Render-phase
-  // prop-change adjustment, same pattern as editSignal below. REJECT
-  // decisions carry no override payload, so they must not wipe local
-  // edits — the operator may re-approve the card right after.
+  // prop-change adjustment, same pattern as editSignal below. Syncs only
+  // when the incoming decision actually carries values, so a plain
+  // REJECT (no overrides) never wipes local edits — the operator may
+  // re-approve the card right after.
   const [prevDecisionTool, setPrevDecisionTool] = useState(decision?.override_tool);
   if (decision?.override_tool !== prevDecisionTool) {
     setPrevDecisionTool(decision?.override_tool);
