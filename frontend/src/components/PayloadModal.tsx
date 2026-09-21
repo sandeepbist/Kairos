@@ -29,6 +29,8 @@ interface FieldConfig {
   key: string;
   label: string;
   kind: FieldKind;
+  /** Blocks Save while empty (doomed executions fail fast in review). */
+  required?: boolean;
   /** Options for kind: "select". */
   options?: { value: string; label: string }[];
   /** Display default for kind: "select" when the payload lacks the key (never written back). */
@@ -57,7 +59,7 @@ const PRIORITY_OPTIONS = [
  */
 const TOOL_FIELDS: Record<TargetTool, FieldConfig[]> = {
   jira: [
-    { key: "project_key", label: "Project key", kind: "text", mono: true, placeholder: "from Settings · Tool targets" },
+    { key: "project_key", label: "Project key", kind: "text", mono: true, required: true, placeholder: "from Settings · Tool targets" },
     {
       key: "issue_type", label: "Issue type", kind: "select", defaultValue: "Task",
       options: [
@@ -79,9 +81,9 @@ const TOOL_FIELDS: Record<TargetTool, FieldConfig[]> = {
   ],
   calendar: [
     { key: "title", label: "Event title", kind: "text" },
-    { key: "start_time", label: "Start time", kind: "datetime-local", mono: true },
+    { key: "start_time", label: "Start time", kind: "datetime-local", mono: true, required: true },
     {
-      key: "end_time", label: "End time", kind: "datetime-local", mono: true,
+      key: "end_time", label: "End time", kind: "datetime-local", mono: true, required: true,
       note: "Required before execution — Kairos never invents a meeting slot. The source quote is shown on the left.",
     },
     { key: "attendees", label: "Attendee email", kind: "single-email", mono: true, placeholder: "name@company.com" },
@@ -107,7 +109,7 @@ const TOOL_FIELDS: Record<TargetTool, FieldConfig[]> = {
     { key: "body", label: "Body", kind: "textarea", rows: 4 },
   ],
   github: [
-    { key: "repo", label: "Repository (owner/name)", kind: "text", mono: true, placeholder: "acme/planning" },
+    { key: "repo", label: "Repository (owner/name)", kind: "text", mono: true, required: true, placeholder: "acme/planning" },
     { key: "title", label: "Issue title", kind: "text" },
     { key: "description", label: "Description", kind: "textarea" },
     { key: "labels", label: "Labels (comma separated)", kind: "text", mono: true, placeholder: "kairos, bug" },
@@ -128,7 +130,7 @@ const TOOL_FIELDS: Record<TargetTool, FieldConfig[]> = {
     { key: "due_date", label: "Due date", kind: "date", mono: true },
   ],
   clickup: [
-    { key: "list_id", label: "List ID", kind: "text", mono: true, placeholder: "from the list URL in ClickUp" },
+    { key: "list_id", label: "List ID", kind: "text", mono: true, required: true, placeholder: "from the list URL in ClickUp" },
     { key: "name", label: "Task name", kind: "text", fallback: "title" },
     { key: "description", label: "Description", kind: "textarea" },
   ],
@@ -150,6 +152,7 @@ export function PayloadModal({
   onSave,
 }: PayloadModalProps) {
   const [payload, setPayload] = useState<Record<string, unknown>>({ ...item.tool_payload });
+  const [validationError, setValidationError] = useState<string | null>(null);
 
   // Re-sync the editable copy whenever the dialog is (re)opened for a
   // different item or target tool — otherwise stale values from a
@@ -228,6 +231,7 @@ export function PayloadModal({
   if (!isOpen) return null;
 
   const handleChange = (field: string, value: unknown) => {
+    setValidationError(null);
     setPayload((prev) => ({ ...prev, [field]: value }));
   };
 
@@ -250,11 +254,29 @@ export function PayloadModal({
   };
 
   const handleSave = () => {
+    const missing = missingRequired();
+    if (missing.length > 0) {
+      setValidationError(
+        `Required before execution: ${missing.map((f) => f.label).join(", ")}`
+      );
+      return;
+    }
+    setValidationError(null);
     onSave(payload);
     onClose();
   };
 
   const fields = TOOL_FIELDS[targetTool];
+
+  /** Required fields left empty (display-aware: selects with only a
+   * display default still count as empty until the operator picks). */
+  const missingRequired = (): FieldConfig[] =>
+    fields.filter((f) => {
+      if (!f.required) return false;
+      const v = payload[f.key];
+      if (Array.isArray(v)) return v.length === 0;
+      return String(v ?? "").trim() === "";
+    });
 
   return (
     <div
@@ -375,6 +397,12 @@ export function PayloadModal({
             </React.Fragment>
           ))}
         </div>
+
+        {validationError && (
+          <p className="notice notice-error" role="alert" style={{ marginTop: "16px" }}>
+            {validationError}
+          </p>
+        )}
 
         <div
           style={{
