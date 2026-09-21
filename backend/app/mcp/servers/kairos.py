@@ -36,8 +36,18 @@ server = MCPServer(
 
 
 def _check_key(api_key: str) -> None:
-    """Single-operator gate: MCP callers must present the shared key."""
-    if settings.API_KEY and api_key != settings.API_KEY:
+    """Single-operator gate: MCP callers must present the shared key.
+
+    Constant-time comparison, matching the HTTP auth path — the key is
+    compared as digests so length/timing leaks nothing.
+    """
+    import hashlib
+    import hmac
+
+    if settings.API_KEY and not hmac.compare_digest(
+        hashlib.sha256(api_key.encode("utf-8")).digest(),
+        hashlib.sha256(settings.API_KEY.encode("utf-8")).digest(),
+    ):
         raise ValueError("Invalid api_key. Configure the Kairos operator key in your MCP host.")
 
 
@@ -125,6 +135,10 @@ async def approve_items(
     item ids outside the batch — before the decision enters history —
     and the caller receives that rejection synchronously.
     """
+    from sqlalchemy import select
+
+    from app.db.models import BatchModel
+    from app.db.session import async_session_factory
     from app.temporal.worker import get_temporal_client
     from app.temporal.workflows import ProcessBatchWorkflow
 
@@ -137,8 +151,19 @@ async def approve_items(
         if not d.get("item_id"):
             raise ValueError("Every decision needs an item_id.")
 
+    # Resolve the workflow handle from the batch row — never reconstruct
+    # the id format here (mirrors the HTTP approve path).
+    async with async_session_factory() as session:
+        batch = (
+            await session.execute(select(BatchModel).where(BatchModel.id == batch_id))
+        ).scalar_one_or_none()
+    if not batch:
+        raise ValueError(f"Batch '{batch_id}' not found.")
+    if not batch.temporal_workflow_id:
+        raise ValueError(f"Batch '{batch_id}' has no active workflow.")
+
     client = await get_temporal_client()
-    handle = client.get_workflow_handle(f"batch-wf-{batch_id}")
+    handle = client.get_workflow_handle(batch.temporal_workflow_id)
     result = await handle.execute_update(ProcessBatchWorkflow.ApprovalReceived, decisions)
     return {
         "accepted": result["accepted"],
