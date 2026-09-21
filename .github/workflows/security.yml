@@ -37,7 +37,9 @@ jobs:
       # naming the advisory and why it cannot affect Kairos.
       - uses: pypa/gh-action-pip-audit@v1.1.0
         with:
-          inputs: -r backend/requirements.txt
+          # The lockfile is what ships (Dockerfile installs from it), so
+          # audit exactly those pins — not the floating requirements floor.
+          inputs: -r backend/requirements.lock
 
   codeql:
     name: CodeQL
@@ -49,9 +51,10 @@ jobs:
       - uses: actions/checkout@v4
       # Python is analyzed without installing dependencies (CodeQL extracts
       # what it needs from source); JS/TS needs no build for Next.js analysis.
-      - uses: github/codeql-action/init@v3
+      - uses: github/codeql-action/init@v4
         with:
           languages: python, javascript-typescript
-      - uses: github/codeql-action/autobuild@v3
-        continue-on-error: true # JS autobuild may fail on missing NEXT_* args; analysis still runs
-      - uses: github/codeql-action/analyze@v3
+      # No autobuild step: Python needs no build for extraction, and the
+      # repo's Next.js analysis needs none either — the old autobuild
+      # (with continue-on-error) added failure modes for zero value.
+      - uses: github/codeql-action/analyze@v4

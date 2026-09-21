@@ -1,0 +1,7 @@
+# Backend image never needs tests or bytecode caches at runtime.
+tests/
+__pycache__/
+**/__pycache__/
+.pytest_cache/
+*.pyc
+*.pyo

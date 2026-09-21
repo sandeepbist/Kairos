@@ -10,6 +10,9 @@
 # depends on memory. Keep backups/ OUT of any sync target: the plaintext
 # key sits beside it.
 set -euo pipefail
+# Dumps hold vault ciphertext plus full transcript history: never let
+# them land group/world-readable regardless of the caller's umask.
+umask 077
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BACKUP_DIR="${KAIROS_BACKUP_DIR:-$ROOT_DIR/backups}"
@@ -35,7 +38,9 @@ if [ -n "${KAIROS_BACKUP_IN_COMPOSE:-}" ]; then
   docker compose -f "$ROOT_DIR/$compose_file" exec -T postgres \
     pg_dump -U "$PG_USER" -Fc "$PG_DB" > "$DUMP"
 else
-  PGPORT="${POSTGRES_PORT:-5435}" pg_dump -U "$PG_USER" \
+  # Password via env for this invocation only: pg_dump would otherwise
+  # prompt on a TTY or fail where the server requires a password.
+  PGPASSWORD="${POSTGRES_PASSWORD:-}" PGPORT="${POSTGRES_PORT:-5435}" pg_dump -U "$PG_USER" \
     -h "${POSTGRES_HOST:-localhost}" -p "${POSTGRES_PORT:-5435}" -Fc "$PG_DB" > "$DUMP"
 fi
 

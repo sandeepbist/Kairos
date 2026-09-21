@@ -12,9 +12,9 @@ echo "=================================================="
 # 1. Start Infrastructure (PostgreSQL, Redis, Temporal)
 echo "📦 [1/4] Starting Docker services (PostgreSQL 5435, Temporal 7234, Temporal UI 8234)..."
 if command -v docker-compose &> /dev/null; then
-  docker-compose up -d
+  docker-compose -f docker-compose.dev.yml up -d
 else
-  docker compose up -d
+  docker compose -f docker-compose.dev.yml up -d
 fi
 
 echo "⏳ Waiting for Temporal Server to be ready on port 7234..."
@@ -27,6 +27,11 @@ done
 echo "✓ Docker infrastructure is live and healthy."
 
 # 2. Activate Python Virtual Environment
+if [ ! -x "$ROOT_DIR/.venv/bin/python" ]; then
+  echo "❌ $ROOT_DIR/.venv not found — create it first:"
+  echo "   python3 -m venv .venv && .venv/bin/pip install -r backend/requirements.txt"
+  exit 1
+fi
 source "$ROOT_DIR/.venv/bin/activate"
 export PYTHONPATH="$ROOT_DIR/backend"
 

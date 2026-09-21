@@ -17,6 +17,7 @@ concurrency:
 jobs:
   backend:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     services:
       postgres:
         image: postgres:17-alpine
@@ -62,7 +63,8 @@ jobs:
           cache: pip
       - name: Install dependencies
         working-directory: backend
-        run: pip install -r requirements.txt
+        # The lockfile is what ships in the image — test exactly those pins.
+        run: pip install -r requirements.lock
       - name: Syntax hygiene (no JS-style comments in Python)
         # Python has no line-start `//` — any match is a typo that
         # py_compile may still accept inside expressions, so grep it.
@@ -111,6 +113,7 @@ jobs:
 
   frontend:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -130,6 +133,27 @@ jobs:
       - name: Build
         working-directory: frontend
         run: npm run build
+
+  # Image smoke: a broken Dockerfile currently merges and only fails in
+  # publish.yml on main/tags. Build both images on PRs (no push).
+  docker-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build backend image (no push)
+        uses: docker/build-push-action@v6
+        with:
+          context: ./backend
+          file: backend/Dockerfile
+          push: false
+      - name: Build frontend image (no push)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: frontend/Dockerfile
+          push: false
 
   # Browser end-to-end suite (Playwright) against live Postgres + Temporal.
   # scripts/e2e-stack.sh boots worker + API + frontend on top of the services
@@ -180,7 +204,7 @@ jobs:
           cache: pip
       - name: Install backend dependencies
         working-directory: backend
-        run: pip install -r requirements.txt
+        run: pip install -r requirements.lock
       - uses: actions/setup-node@v4
         with:
           node-version: "22"

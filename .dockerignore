@@ -1,0 +1,16 @@
+# Frontend build context is the repo root (legal docs + frontend/).
+# Exclude everything the image rebuilds or never serves.
+**/node_modules/
+**/.next/
+.env
+.env.*
+*.log
+frontend/test-results/
+frontend/playwright-report/
+scratch/
+.venv/
+.git/
+.gitignore
+**/__pycache__/
+.pytest_cache/
+backups/
