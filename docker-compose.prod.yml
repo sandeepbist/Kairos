@@ -63,6 +63,10 @@ services:
       DEBUG: "false"
       API_KEY: ${API_KEY:?API_KEY is required}
       ENCRYPTION_KEY: ${ENCRYPTION_KEY:?ENCRYPTION_KEY (44-char Fernet key) is required}
+      # Previous vault key during a rotation: every process that decrypts
+      # (api, worker) needs it, so it lives in the shared anchor — a
+      # worker-only copy left the API 500ing on old-key rows mid-rotation.
+      ENCRYPTION_KEY_PREVIOUS: ${ENCRYPTION_KEY_PREVIOUS:-}
       POSTGRES_HOST: postgres
       POSTGRES_PORT: 5432
       POSTGRES_USER: ${POSTGRES_USER:-kairos_user}
@@ -102,10 +106,13 @@ services:
       context: ./backend
     command: ["python", "-m", "app.temporal.worker"]
     working_dir: /app/backend
+    # The image HEALTHCHECK curls :8000/api/health, but the worker serves
+    # no HTTP — without this it would report unhealthy forever.
+    healthcheck:
+      disable: true
     environment:
       <<: *backend_env
       KAIROS_DB_APP_NAME: kairos-worker
-      ENCRYPTION_KEY_PREVIOUS: ${ENCRYPTION_KEY_PREVIOUS:-}
     networks: [internal]
     restart: unless-stopped
     depends_on:

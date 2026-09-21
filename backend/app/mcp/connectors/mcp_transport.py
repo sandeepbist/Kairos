@@ -60,26 +60,49 @@ async def execute_via_mcp(
         from mcp import ClientSession
         from mcp.client.streamable_http import streamable_http_client
 
-        async with streamable_http_client(endpoint) as (
-            read_stream,
-            write_stream,
-            _,
-        ):
-            async with ClientSession(read_stream, write_stream) as session:
-                for tool_name in MCP_TOOL_NAMES[tool]:
-                    result = await session.call_tool(
-                        tool_name,
-                        arguments=_mcp_arguments(tool, payload),
+        # The token was previously accepted but never sent: every dispatch
+        # went out unauthenticated, failed, and fell back to REST after
+        # added latency. Auth travels as a Bearer header on a caller-owned
+        # client (the SDK takes no headers argument); the 15s timeout
+        # matches the REST connectors so a hung vendor server cannot stall
+        # execution.
+        http_client = None
+        try:
+            from httpx2 import AsyncClient as _AsyncClient
+        except ImportError:
+            try:
+                from httpx import AsyncClient as _AsyncClient
+            except ImportError:
+                _AsyncClient = None
+        if _AsyncClient is not None:
+            http_client = _AsyncClient(
+                headers={"Authorization": f"Bearer {access_token}"},
+                timeout=15.0,
+            )
+        try:
+            async with streamable_http_client(endpoint, http_client=http_client) as (
+                read_stream,
+                write_stream,
+                _,
+            ):
+                async with ClientSession(read_stream, write_stream) as session:
+                    for tool_name in MCP_TOOL_NAMES[tool]:
+                        result = await session.call_tool(
+                            tool_name,
+                            arguments=_mcp_arguments(tool, payload),
+                        )
+                        if not result.is_error:
+                            content = getattr(result, "structured_content", None)
+                            if isinstance(content, dict):
+                                return content
+                    logger.debug(
+                        "MCP dispatch for %s produced no usable result; REST will run.",
+                        tool,
                     )
-                    if not result.is_error:
-                        content = getattr(result, "structured_content", None)
-                        if isinstance(content, dict):
-                            return content
-                logger.debug(
-                    "MCP dispatch for %s produced no usable result; REST will run.",
-                    tool,
-                )
-                return None
+                    return None
+        finally:
+            if http_client is not None:
+                await http_client.aclose()
     except Exception as e:  # noqa: BLE001 — any MCP failure means REST fallback
         logger.debug("MCP transport for %s failed (%s); REST fallback.", tool, e)
         return None

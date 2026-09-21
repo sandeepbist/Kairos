@@ -848,3 +848,45 @@ async def test_connector_error_text_redacted_in_log(monkeypatch):
         ).scalars().one()
         assert "SECRET1234567890abcdef" not in (log.error or "")
         assert "[REDACTED]" in (log.error or "")
+
+
+@pytest.mark.asyncio
+async def test_mcp_transport_sends_bearer_token():
+    """The OAuth token must travel as a Bearer header on the MCP client
+    (previously accepted but never attached: every dispatch went out
+    unauthenticated, failed, and fell back to REST)."""
+    from unittest.mock import AsyncMock, patch
+    from app.mcp.connectors.mcp_transport import execute_via_mcp
+
+    captured = {}
+
+    class FakeClient:
+        def __init__(self, **kwargs):
+            captured.update(kwargs)
+
+        async def aclose(self):
+            captured["closed"] = True
+
+    class FakeResult:
+        is_error = False
+        structured_content = {"ok": True}
+
+    fake_session = AsyncMock()
+    fake_session.__aenter__ = AsyncMock(return_value=fake_session)
+    fake_session.__aexit__ = AsyncMock(return_value=False)
+    fake_session.call_tool = AsyncMock(return_value=FakeResult())
+
+    with patch("httpx2.AsyncClient", FakeClient), \
+         patch("mcp.client.streamable_http.streamable_http_client") as fake_transport, \
+         patch("mcp.ClientSession", return_value=fake_session):
+        fake_ctx = AsyncMock()
+        fake_ctx.__aenter__ = AsyncMock(return_value=(None, None, None))
+        fake_ctx.__aexit__ = AsyncMock(return_value=False)
+        fake_transport.return_value = fake_ctx
+
+        result = await execute_via_mcp("notion", "ya29.token", {"title": "hello"})
+        assert result == {"ok": True}
+
+    assert captured.get("headers") == {"Authorization": "Bearer ya29.token"}
+    assert getattr(captured.get("timeout"), "connect", captured.get("timeout")) == 15.0
+    assert captured.get("closed") is True
