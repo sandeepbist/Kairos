@@ -805,3 +805,10 @@ body {
 .skip-link:focus-visible {
   left: 8px;
 }
+
+/* ---- ≤640px: how-it-works strip stacks ---- */
+@media (max-width: 640px) {
+  .how-grid {
+    grid-template-columns: 1fr;
+  }
+}

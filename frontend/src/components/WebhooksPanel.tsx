@@ -307,13 +307,14 @@ export function WebhooksPanel() {
       )}
 
       <div className="panel" style={{ padding: "16px 20px", marginBottom: "10px" }}>
-        <div style={{ display: "flex", gap: "8px" }}>
+        <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
           <input
             className="input mono"
             placeholder="https://your-receiver.example.com/hook"
             value={url}
             onChange={(e) => setUrl(e.target.value)}
             aria-label="Webhook URL"
+            style={{ flex: "1 1 220px", minWidth: 0 }}
           />
           <input
             className="input"
@@ -321,6 +322,7 @@ export function WebhooksPanel() {
             value={description}
             onChange={(e) => setDescription(e.target.value)}
             aria-label="Webhook description"
+            style={{ flex: "1 1 160px", minWidth: 0 }}
           />
           <button
             type="button"

@@ -218,6 +218,7 @@ export default function IngestPage() {
         </span>
         <button
           type="button"
+          aria-pressed={mode === "paste"}
           className={`btn btn-sm ${mode === "paste" ? "btn-secondary" : "btn-ghost"}`}
           onClick={() => setMode("paste")}
         >
@@ -225,6 +226,7 @@ export default function IngestPage() {
         </button>
         <button
           type="button"
+          aria-pressed={mode === "export"}
           className={`btn btn-sm ${mode === "export" ? "btn-secondary" : "btn-ghost"}`}
           onClick={() => setMode("export")}
         >
@@ -370,7 +372,7 @@ export default function IngestPage() {
 
       {/* How it works — quiet three-step strip */}
       <div
-        className="rise rise-4"
+        className="rise rise-4 how-grid"
         style={{
           display: "grid",
           gridTemplateColumns: "repeat(3, 1fr)",

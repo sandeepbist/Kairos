@@ -211,6 +211,7 @@ export default function HistoryPage() {
                       className="btn btn-ghost btn-sm"
                       onClick={() => handleDelete(b.batch_id)}
                       disabled={deletingId === b.batch_id}
+                      aria-label={`Delete batch ${b.batch_id.slice(0, 8)} and its records`}
                     >
                       {deletingId === b.batch_id ? "Deleting" : "Delete"}
                     </button>

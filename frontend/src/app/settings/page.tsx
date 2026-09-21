@@ -465,7 +465,7 @@ export default function SettingsPage() {
           <div
             style={{
               display: "grid",
-              gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))",
+              gridTemplateColumns: "repeat(auto-fill, minmax(min(300px, 100%), 1fr))",
               gap: "14px",
               marginBottom: "16px",
             }}
@@ -531,7 +531,7 @@ export default function SettingsPage() {
                   <span
                     className={`status-dot ${connected ? "status-on" : "status-off"}`}
                   />
-                  <span className="h-section">{card.label}</span>
+                  <span className="h-section" id={`cred-label-${card.provider}`}>{card.label}</span>
                 </div>
                 {connected && (
                   <button
@@ -539,6 +539,7 @@ export default function SettingsPage() {
                     className="btn btn-ghost btn-sm"
                     onClick={() => handleDeleteToken(card.provider)}
                     disabled={savingProvider === card.provider}
+                    aria-describedby={`cred-label-${card.provider}`}
                   >
                     Disconnect
                   </button>
@@ -554,11 +555,12 @@ export default function SettingsPage() {
                 )}
               </p>
 
-              <div style={{ display: "flex", gap: "8px" }}>
+              <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
                 <input
                   type="password"
                   className="input mono"
                   placeholder={card.placeholder}
+                  style={{ flex: "1 1 200px", minWidth: 0 }}
                   value={tokenValues[card.provider] || ""}
                   onChange={(e) =>
                     setTokenValues((prev) => ({ ...prev, [card.provider]: e.target.value }))
@@ -574,6 +576,7 @@ export default function SettingsPage() {
                   onClick={() => handleSaveToken(card.provider)}
                   disabled={savingProvider === card.provider}
                   style={{ flexShrink: 0 }}
+                  aria-describedby={`cred-label-${card.provider}`}
                 >
                   {savingProvider === card.provider ? "Saving…" : connected ? "Update" : "Save"}
                 </button>
@@ -584,6 +587,7 @@ export default function SettingsPage() {
                     onClick={() => handleTestConnector(card.provider)}
                     disabled={test?.running}
                     style={{ flexShrink: 0 }}
+                    aria-describedby={`cred-label-${card.provider}`}
                   >
                     {test?.running ? "Testing…" : "Test"}
                   </button>

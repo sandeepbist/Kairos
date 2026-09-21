@@ -130,6 +130,7 @@ export default function LedgerPage() {
             <button
               key={f.value}
               type="button"
+              aria-pressed={active}
               className={`btn btn-sm ${active ? "btn-secondary" : "btn-ghost"}`}
               onClick={() => setFilter(f.value)}
             >
@@ -145,7 +146,7 @@ export default function LedgerPage() {
       </div>
 
       {error && (
-        <div className="notice notice-error fade-in" style={{ marginBottom: "16px" }}>
+        <div className="notice notice-error fade-in" role="alert" style={{ marginBottom: "16px" }}>
           {error}
         </div>
       )}
@@ -269,6 +270,7 @@ export default function LedgerPage() {
                         className="btn btn-ghost btn-sm"
                         onClick={() => handleComplete(task.id)}
                         disabled={busy}
+                        aria-label={`Complete task: ${task.title}`}
                       >
                         {busy ? "Working…" : "Complete"}
                       </button>
@@ -279,6 +281,7 @@ export default function LedgerPage() {
                       style={{ color: "var(--err)" }}
                       onClick={() => handleDelete(task.id)}
                       disabled={busy}
+                      aria-label={`Delete task: ${task.title}`}
                     >
                       Delete
                     </button>

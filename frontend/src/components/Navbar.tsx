@@ -193,7 +193,7 @@ export function Navbar() {
 
         {/* Connector status — compact summary */}
         <div
-          style={{ display: "flex", alignItems: "center", gap: "14px" }}
+          style={{ display: "flex", alignItems: "center", gap: "14px", flexWrap: "wrap", rowGap: "6px" }}
           title="Connector availability — manage in Settings"
         >
           <Link

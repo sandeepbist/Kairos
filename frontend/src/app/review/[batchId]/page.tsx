@@ -485,6 +485,8 @@ export default function ReviewPage({
       {isReviewable && (
         <div
           className="fade-in"
+          role="region"
+          aria-label="Review actions"
           style={{
             position: "fixed",
             bottom: "20px",
