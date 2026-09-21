@@ -71,6 +71,26 @@ jobs:
             echo "::error::JS-style // comment found in Python source"
             exit 1
           fi
+      - name: README test count matches suite
+        # The README names the collected test count; fail if a new test
+        # lands without updating it (keeps the docs claim honest).
+        working-directory: backend
+        run: |
+          python - <<'EOF'
+          import re, subprocess
+          out = subprocess.run(
+              ["python", "-m", "pytest", "tests/", "--collect-only",
+               "-q", "-p", "no:cacheprovider"],
+              capture_output=True, text=True,
+          ).stdout
+          n = int(re.search(r"(\d+) tests collected", out).group(1))
+          readme = open("../README.md").read()
+          m = re.search(r"\*\*(\d+) tests\*\* run against", readme)
+          assert m and int(m.group(1)) == n, (
+              f"README says {m.group(1) if m else '?'} but suite collects {n}"
+          )
+          print(f"test count consistent: {n}")
+          EOF
       - name: Apply migrations
         working-directory: backend
         run: python -m alembic upgrade head
