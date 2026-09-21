@@ -63,6 +63,14 @@ jobs:
       - name: Install dependencies
         working-directory: backend
         run: pip install -r requirements.txt
+      - name: Syntax hygiene (no JS-style comments in Python)
+        # Python has no line-start `//` — any match is a typo that
+        # py_compile may still accept inside expressions, so grep it.
+        run: |
+          if grep -rn --include='*.py' '^\s*//' backend/app backend/alembic backend/tests; then
+            echo "::error::JS-style // comment found in Python source"
+            exit 1
+          fi
       - name: Apply migrations
         working-directory: backend
         run: python -m alembic upgrade head
