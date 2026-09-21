@@ -60,6 +60,22 @@ export function ActionCard({
   );
   const [isModalOpen, setIsModalOpen] = useState(false);
 
+  // Re-sync local tool/payload when the parent decision changes (bulk
+  // approve / dismiss-all / approve-high-confidence). Render-phase
+  // prop-change adjustment, same pattern as editSignal below. REJECT
+  // decisions carry no override payload, so they must not wipe local
+  // edits — the operator may re-approve the card right after.
+  const [prevDecisionTool, setPrevDecisionTool] = useState(decision?.override_tool);
+  if (decision?.override_tool !== prevDecisionTool) {
+    setPrevDecisionTool(decision?.override_tool);
+    if (decision?.override_tool) setSelectedTool(decision.override_tool);
+  }
+  const [prevDecisionPayload, setPrevDecisionPayload] = useState(decision?.modified_payload);
+  if (decision?.modified_payload !== prevDecisionPayload) {
+    setPrevDecisionPayload(decision?.modified_payload);
+    if (decision?.modified_payload) setModifiedPayload(decision.modified_payload);
+  }
+
   // Keyboard shortcut (editSignal from the review page) opens the payload
   // editor for this card without touching decision state ownership.
   // Render-phase prop-change adjustment (no effect) per the documented
@@ -296,7 +312,9 @@ export function ActionCard({
         <PayloadModal
           isOpen={isModalOpen}
           onClose={() => setIsModalOpen(false)}
-          item={item}
+          // Pass the card's current payload (including saved edits), not
+          // just the extraction original, so reopening shows last-saved values.
+          item={{ ...item, tool_payload: modifiedPayload }}
           targetTool={selectedTool}
           onSave={handleSavePayload}
         />

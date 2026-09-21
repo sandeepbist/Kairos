@@ -249,11 +249,20 @@ export default function ReviewPage({
     const updated: Record<string, ActionItemDecision> = {};
     batch.items.forEach((item) => {
       const isHigh = item.confidence >= 0.85;
-      updated[item.id] = {
-        item_id: item.id,
-        action: isHigh ? "APPROVE" : "REJECT",
-        rejection_reason: isHigh ? undefined : "Below confidence threshold",
-      };
+      updated[item.id] = isHigh
+        ? {
+            item_id: item.id,
+            action: "APPROVE",
+            // Preserve any operator tool override / payload edits so the
+            // bulk action never silently wipes per-card adjustments.
+            override_tool: decisions[item.id]?.override_tool || item.suggested_tool,
+            modified_payload: decisions[item.id]?.modified_payload || item.tool_payload,
+          }
+        : {
+            item_id: item.id,
+            action: "REJECT",
+            rejection_reason: "Below confidence threshold",
+          };
     });
     setDecisions(updated);
   };
@@ -492,13 +501,15 @@ export default function ReviewPage({
           <button
             type="button"
             onClick={handleSubmitApprovals}
-            disabled={submitting || approvedCount === 0}
+            disabled={submitting || Object.keys(decisions).length === 0}
             className="btn btn-primary"
           >
             {submitting ? (
               <>
                 <span className="spinner" /> Executing
               </>
+            ) : approvedCount === 0 ? (
+              `Dismiss ${rejectedCount} ${rejectedCount === 1 ? "action" : "actions"}`
             ) : (
               `Execute ${approvedCount} ${approvedCount === 1 ? "action" : "actions"}`
             )}

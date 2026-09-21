@@ -83,7 +83,7 @@ export function Navbar() {
   const connectedCount = connectedTools.length;
   const connectedTitle =
     connectedCount > 0
-      ? `Connected (${connectedCount}/12): ${connectedTools
+      ? `Connected (${connectedCount}/${CONNECTOR_TOOLS.length}): ${connectedTools
           .map((tool) => TOOL_LABELS[tool])
           .join(" · ")} — manage in Settings`
       : "No connectors connected — manage in Settings";

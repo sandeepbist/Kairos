@@ -151,6 +151,19 @@ export function PayloadModal({
 }: PayloadModalProps) {
   const [payload, setPayload] = useState<Record<string, unknown>>({ ...item.tool_payload });
 
+  // Re-sync the editable copy whenever the dialog is (re)opened for a
+  // different item or target tool — otherwise stale values from a
+  // previous edit session leak into the new one. Render-phase prop-change
+  // adjustment (no effect): keyed on ids, not object identity, so
+  // background refetches replacing `item` while the dialog is open do not
+  // wipe in-progress edits. Closing resets the key so reopening resyncs.
+  const modalSyncKey = isOpen ? `${item.id}:${targetTool}` : null;
+  const [prevModalSyncKey, setPrevModalSyncKey] = useState<string | null>(null);
+  if (modalSyncKey !== prevModalSyncKey) {
+    setPrevModalSyncKey(modalSyncKey);
+    if (modalSyncKey) setPayload({ ...item.tool_payload });
+  }
+
   const dialogRef = useRef<HTMLDivElement | null>(null);
   const previouslyFocusedRef = useRef<HTMLElement | null>(null);
 
