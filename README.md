@@ -15,14 +15,14 @@ human approves every single item.
 [**Terms**](TERMS.md)
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-18181b?style=flat-square)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-166%20passing-4ade80?style=flat-square)](#testing)
-[![Python](https://img.shields.io/badge/python-3.11%2B-3776ab?style=flat-square&logo=python&logoColor=white)](https://www.python.org)
-[![Node](https://img.shields.io/badge/node-18%2B-5fa04e?style=flat-square&logo=nodedotjs&logoColor=white)](https://nodejs.org)
+[![Tests](https://img.shields.io/badge/tests-203%20passing-4ade80?style=flat-square)](#testing)
+[![Python](https://img.shields.io/badge/python-3.12%2B-3776ab?style=flat-square&logo=python&logoColor=white)](https://www.python.org)
+[![Node](https://img.shields.io/badge/node-22-5fa04e?style=flat-square&logo=nodedotjs&logoColor=white)](https://nodejs.org)
 [![FastAPI](https://img.shields.io/badge/FastAPI-009488?style=flat-square&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com)
 [![Temporal](https://img.shields.io/badge/Temporal-durable%20execution-1d1d1f?style=flat-square&logo=temporal&logoColor=white)](https://temporal.io)
 [![MCP](https://img.shields.io/badge/MCP-2.x-7ca2dd?style=flat-square)](https://modelcontextprotocol.io)
 
-<sub>Self-hosted &middot; single-operator &middot; your transcripts never leave your infrastructure</sub>
+<sub>Self-hosted &middot; single-operator &middot; zero-credential mode keeps transcripts on your machine (connect an LLM key and extraction text goes to that provider — see [Privacy](PRIVACY.md))</sub>
 
 </div>
 
@@ -39,11 +39,12 @@ human approves every single item.
 7. [Testing](#testing)
 8. [Production deployment](#production-deployment)
 9. [Deployment & releases](#deployment--releases)
-10. [Deployment scope](#deployment-scope)
-11. [Repository layout](#repository-layout)
-12. [Security posture](#security-posture)
-13. [Contributing](#contributing)
-14. [License](#license)
+10. [Backup, restore, and key rotation](#backup-restore-and-key-rotation)
+11. [Deployment scope](#deployment-scope)
+12. [Repository layout](#repository-layout)
+13. [Security posture](#security-posture)
+14. [Contributing](#contributing)
+15. [License](#license)
 
 ## Screenshots
 
@@ -103,9 +104,11 @@ you paste text ─ or forward a notetaker export ─ or let Gmail poll in
 ```
 
 Each stage survives crashes: Temporal replays the workflow instead of
-losing it, the idempotency hash prevents a replayed execution from filing
-the same ticket twice, and an approval wait that never gets a decision
-expires after seven days instead of piling up.
+losing it, the SHA-256 idempotency hash dedupes retried executions
+(exactly-once for the built-in Task Ledger; duplicate suppression on
+third-party tools is best-effort and provider-dependent), and an
+approval wait that never gets a decision expires after seven days
+instead of piling up.
 
 | Layer | Choice | Why |
 |:---|:---|:---|
@@ -145,8 +148,9 @@ verbatim source quote behind the proposal, so you verify rather than trust.
 
 Issues in Jira, Linear, GitHub, or ClickUp, Notion and Confluence
 pages, Calendar events, Todoist, Google Tasks, and Asana entries,
-email drafts, ledger rows — with SHA-256 idempotency so retries and
-replays never double-create anything.
+email drafts, ledger rows — with SHA-256 idempotency dedup on every
+execution (exactly-once where the provider or our own store supports
+it; third-party retries are best-effort).
 
 **Durable by construction**
 
@@ -221,7 +225,7 @@ the built-in Task Ledger.
 
 ## Quick start
 
-Requirements: Docker, Python 3.11+, Node 18+.
+Requirements: Docker, Python 3.12+, Node 22.
 
 ```bash
 git clone https://github.com/sandeepbist/Kairos.git
@@ -456,20 +460,22 @@ built on this codebase rather than expecting configuration to get there.
 
 ```
 backend/
-  app/api/        REST endpoints (batches, history, connectors)
+  app/api/        REST endpoints (batches, history, connectors, webhooks, ledger, ingest exports)
   app/core/       auth, vault, rate limiting, logging, telemetry, redaction
   app/db/         models, sessions, pool policy
-  app/mcp/        connectors, retry transport, Task Ledger MCP server
+  app/mcp/        connectors, retry transport, Task Ledger + Kairos MCP servers
   app/pipelines/  LangGraph ingest/extract/route, routing memory
-  app/temporal/   workflow, activities, worker
+  app/temporal/   workflows, activities, worker
   alembic/        migrations
   tests/          the battle suite
 frontend/         Next.js dashboard + server-side API proxy
 docs/             screenshots
-scripts/          start.sh, test.sh
+mcp-registry/     MCP Registry descriptor for the Task Ledger server
+scripts/          start, test, e2e-stack, backup, release, key rotation, db cleanup
 docker-compose.dev.yml    local infrastructure
 docker-compose.prod.yml   production stack
-.github/workflows/ci.yml  CI
+docker-compose.ghcr.yml   prebuilt-image stack
+.github/workflows/       CI, Security, Publish, Release
 ```
 
 ## Security posture
@@ -484,7 +490,7 @@ docker-compose.prod.yml   production stack
   characters and approval payloads at 200 decisions.
 - Per-IP rate limits: 60 reads/min, 10 writes/min — hardened against
   `X-Forwarded-For` spoofing at both the uvicorn and limiter layers.
-- Exact-origin CORS, `nosniff`/`DENY`/HSTS headers, JSON logs, no stack
+- Exact-origin CORS, `nosniff`/`DENY`/HSTS headers, JSON logs in production, no stack
   traces in responses; `/docs` disabled in production.
 - `DELETE /api/history/batches/{id}` erases a batch and its records;
   deleting a batch still mid-workflow returns `409` instead of corrupting

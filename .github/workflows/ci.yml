@@ -72,8 +72,9 @@ jobs:
             exit 1
           fi
       - name: README test count matches suite
-        # The README names the collected test count; fail if a new test
-        # lands without updating it (keeps the docs claim honest).
+        # The README names the collected test count twice (the **N tests**
+        # claim and the tests-N badge); fail if a new test lands without
+        # updating both (keeps the docs claims honest).
         working-directory: backend
         run: |
           python - <<'EOF'
@@ -85,9 +86,15 @@ jobs:
           ).stdout
           n = int(re.search(r"(\d+) tests collected", out).group(1))
           readme = open("../README.md").read()
+          problems = []
           m = re.search(r"\*\*(\d+) tests\*\* run against", readme)
-          assert m and int(m.group(1)) == n, (
-              f"README says {m.group(1) if m else '?'} but suite collects {n}"
+          if not m or int(m.group(1)) != n:
+              problems.append(f"claim says {m.group(1) if m else '?'}")
+          b = re.search(r"tests-(\d+)%20passing", readme)
+          if not b or int(b.group(1)) != n:
+              problems.append(f"badge says {b.group(1) if b else '?'}")
+          assert not problems, (
+              f"README test count stale (suite collects {n}): " + "; ".join(problems)
           )
           print(f"test count consistent: {n}")
           EOF
