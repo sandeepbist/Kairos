@@ -399,3 +399,21 @@ def test_cors_preflight_allows_put_patch(client):
         )
         allowed = res.headers.get("access-control-allow-methods", "")
         assert method in allowed, f"{method} missing from {allowed!r}"
+
+
+@pytest.mark.asyncio
+async def test_history_limit_clamped_at_200():
+    """An unbounded limit must not page the whole table (DoS bound)."""
+    import uuid as _uuid
+    from app.db.session import async_session_factory as factory
+    from app.db.models import BatchModel
+    from app.api.endpoints.history import get_execution_history
+
+    async with factory() as session:
+        session.add_all(
+            BatchModel(id=str(_uuid.uuid4()), raw_text="t", status="completed")
+            for _ in range(205)
+        )
+        await session.commit()
+        rows = await get_execution_history(limit=10**9, db=session)
+        assert len(rows) == 200
