@@ -123,9 +123,36 @@ export function Navbar() {
               textDecoration: "none",
               display: "flex",
               alignItems: "center",
-              gap: "1px",
+              gap: "8px",
             }}
           >
+            <svg
+              width="20"
+              height="20"
+              viewBox="0 0 32 32"
+              aria-hidden="true"
+              style={{ flexShrink: 0 }}
+            >
+              <circle
+                cx="16"
+                cy="16"
+                r="11"
+                fill="none"
+                stroke="var(--text)"
+                strokeWidth="2.4"
+                opacity="0.9"
+              />
+              <line
+                x1="16"
+                y1="16"
+                x2="22"
+                y2="9.5"
+                stroke="#d4b06a"
+                strokeWidth="2.4"
+                strokeLinecap="round"
+              />
+              <circle cx="16" cy="16" r="2.6" fill="#d4b06a" />
+            </svg>
             <span
               style={{
                 fontWeight: 620,

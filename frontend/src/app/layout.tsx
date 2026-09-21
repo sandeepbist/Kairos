@@ -20,7 +20,7 @@ export const metadata: Metadata = {
   title: "Kairos — Ambient Action Engine",
   description:
     "Turn unstructured conversations into executed actions across Notion, Jira, Calendar, and the Task Ledger — with human approval at every step.",
-  icons: { icon: "/favicon.ico" },
+  icons: { icon: [{ url: "/favicon.ico" }, { url: "/icon.svg", type: "image/svg+xml" }] },
 };
 
 export const viewport: Viewport = {
