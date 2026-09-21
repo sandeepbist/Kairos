@@ -103,7 +103,10 @@ class GitHubConnector(BaseConnector):
             if isinstance(labels, str):
                 # The review UI edits labels as a comma-separated string.
                 labels = [l.strip() for l in labels.split(",") if l.strip()]
-            elif not labels:
+            elif isinstance(labels, list):
+                labels = [str(l).strip() for l in labels if str(l).strip()]
+            else:
+                # Non-string, non-list (e.g. a dict) would 422 at GitHub.
                 labels = configured_labels
 
             if sandbox_mode:

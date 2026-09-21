@@ -72,3 +72,21 @@ async def test_retry_transport_honors_retry_after_header():
         res = await client.get("https://api.example.com/x")
     assert res.status_code == 200
     assert inner.calls == 2
+
+
+def test_retry_after_numeric_date_and_absent():
+    """Retry-After honors seconds and HTTP-date forms; absent header
+    backs off exponentially by attempt."""
+    import httpx
+    from app.mcp.connectors.http import RetryTransport
+
+    def resp(headers):
+        return httpx.Response(503, headers=headers)
+
+    assert RetryTransport._retry_after_seconds(resp({"Retry-After": "2"}), 1) == 2.0
+    assert RetryTransport._retry_after_seconds(resp({"Retry-After": "120"}), 1) == 8.0
+    future = resp({"Retry-After": "Wed, 21 Oct 2099 07:28:00 GMT"})
+    assert 0 < RetryTransport._retry_after_seconds(future, 1) <= 8.0
+    d1 = RetryTransport._retry_after_seconds(resp({}), 1)
+    d3 = RetryTransport._retry_after_seconds(resp({}), 3)
+    assert 0 < d1 < d3 <= 8.0

@@ -56,7 +56,7 @@ class RetryTransport(httpx.AsyncBaseTransport):
             try:
                 response = await self._inner.handle_async_request(request)
                 if response.status_code in _RETRYABLE_STATUS and attempt <= self._max_retries:
-                    retry_after = self._retry_after_seconds(response)
+                    retry_after = self._retry_after_seconds(response, attempt)
                     logger.warning(
                         "Connector call %s %s returned %d (attempt %d/%d), retrying in %.1fs",
                         request.method,
@@ -94,15 +94,30 @@ class RetryTransport(httpx.AsyncBaseTransport):
         await self._inner.aclose()
 
     @staticmethod
-    def _retry_after_seconds(response: httpx.Response) -> float:
-        """Honors Retry-After header (seconds form), else exponential backoff."""
+    def _retry_after_seconds(response: httpx.Response, attempt: int) -> float:
+        """Honors Retry-After (numeric seconds or HTTP-date), else
+        exponential backoff scaled by attempt."""
         header = response.headers.get("Retry-After")
         if header:
             try:
                 return min(float(header), _BACKOFF_MAX_SECONDS)
             except ValueError:
                 pass
-        return min(_BACKOFF_BASE_SECONDS * 4 + random.uniform(0, 0.25), _BACKOFF_MAX_SECONDS)
+            try:
+                from email.utils import parsedate_to_datetime
+
+                retry_at = parsedate_to_datetime(header)
+                import datetime as _dt
+
+                now = _dt.datetime.now(tz=_dt.timezone.utc)
+                if retry_at.tzinfo is None:
+                    retry_at = retry_at.replace(tzinfo=_dt.timezone.utc)
+                delay = (retry_at - now).total_seconds()
+                if delay > 0:
+                    return min(delay, _BACKOFF_MAX_SECONDS)
+            except (ValueError, TypeError, OverflowError):
+                pass
+        return min(_BACKOFF_BASE_SECONDS * (2**attempt) + random.uniform(0, 0.25), _BACKOFF_MAX_SECONDS)
 
     @staticmethod
     def _backoff_delay(attempt: int) -> float:

@@ -483,3 +483,45 @@ async def test_google_tasks_rejects_garbage_due_date():
     finally:
         gc.connector_http_client = orig_client
         gc.GoogleTasksConnector._get_token = orig_token
+
+
+@pytest.mark.asyncio
+async def test_github_dict_labels_fall_back_to_configured():
+    """Non-string, non-list labels would 422 at GitHub; they fall back
+    to the operator's configured set instead."""
+    import app.mcp.connectors.github_connector as gc
+
+    captured = {}
+
+    class FakeResp:
+        is_success = True
+        status_code = 201
+
+        def json(self):
+            return {"id": 9, "number": 3, "html_url": "https://github.com/a/b/issues/3"}
+
+    class FakeClient:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *a):
+            return None
+
+        async def post(self, url, json=None, headers=None):
+            captured.update(json or {})
+            return FakeResp()
+
+    orig_client = gc.connector_http_client
+    orig_token = gc.GitHubConnector._get_token
+    gc.connector_http_client = lambda timeout=15.0: FakeClient()
+    gc.GitHubConnector._get_token = _seeded_token
+    try:
+        res = await gc.GitHubConnector().execute(
+            {"title": "x", "repo": "a/b", "labels": {"weird": "dict"}},
+            sandbox_mode=False,
+        )
+        assert res.status == "success"
+        assert isinstance(captured.get("labels"), list)
+    finally:
+        gc.connector_http_client = orig_client
+        gc.GitHubConnector._get_token = orig_token
