@@ -111,9 +111,12 @@ async def list_tasks(
     status: str | None = None,
     limit: int = 50,
 ) -> list[dict[str, Any]]:
-    """Lists tasks from task_ledger_tasks."""
+    """Lists tasks from task_ledger_tasks (newest first, capped at 200
+    rows per call like the HTTP surface — callers must not be able to
+    request unbounded scans)."""
+    capped = max(1, min(limit or 50, 200))
     async with async_session_factory() as session:
-        query = select(TaskLedgerModel).order_by(TaskLedgerModel.created_at.desc()).limit(limit)
+        query = select(TaskLedgerModel).order_by(TaskLedgerModel.created_at.desc()).limit(capped)
         if status:
             query = query.where(TaskLedgerModel.status == status.lower())
         result = await session.execute(query)

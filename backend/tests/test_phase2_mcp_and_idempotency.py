@@ -783,3 +783,25 @@ async def test_ledger_create_task_idempotent_on_external_ref():
             )
         ).scalars().all()
         assert len(key_rows) == 1
+
+
+# ---------------------------------------------------------
+# Test: list_tasks caps caller-controlled limit
+# ---------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_ledger_list_tasks_caps_limit():
+    """A huge caller limit must not trigger an unbounded scan (HTTP
+    surface caps at 200; the MCP tool matches)."""
+    from app.db.models import TaskLedgerModel
+
+    async with async_session_factory() as session:
+        session.add_all(
+            TaskLedgerModel(id=str(uuid.uuid4()), title=f"cap-{n}", notes="")
+            for n in range(205)
+        )
+        await session.commit()
+    rows = await list_tasks(limit=10**9)
+    assert len(rows) == 200
+    rows_all = await list_tasks()
+    assert len(rows_all) <= 200
