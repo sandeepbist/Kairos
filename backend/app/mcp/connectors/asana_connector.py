@@ -87,6 +87,15 @@ class AsanaConnector(BaseConnector):
                         workspace_gid = (
                             entries[0].get("gid") if entries else None
                         )
+                    else:
+                        # Surface the real status: a 401/429 is actionable,
+                        # "no visible workspace" is not.
+                        return ExecutionResult(
+                            tool=self.tool_name,
+                            status="failed",
+                            latency_ms=int((time.time() - start_time) * 1000),
+                            error="Asana workspaces HTTP " + str(ws_resp.status_code),
+                        )
                     if not workspace_gid:
                         return ExecutionResult(
                             tool=self.tool_name,
@@ -104,8 +113,19 @@ class AsanaConnector(BaseConnector):
                 if workspace_gid:
                     body["workspace"] = str(workspace_gid)[:32]
                 if due_on:
-                    # Asana takes YYYY-MM-DD; keep the date component.
-                    body["due_on"] = str(due_on)[:10]
+                    # Asana takes YYYY-MM-DD; reject garbage early instead
+                    # of shipping a sliced guess the API refuses opaquely.
+                    due_text = str(due_on).strip()[:10]
+                    from datetime import date as _date
+
+                    try:
+                        _date.fromisoformat(due_text)
+                    except ValueError:
+                        raise ValueError(
+                            f"Asana execution failed: due_on '{due_on}' "
+                            "is not a valid YYYY-MM-DD date."
+                        )
+                    body["due_on"] = due_text
 
                 resp = await client.post(
                     ASANA_API + "/tasks",

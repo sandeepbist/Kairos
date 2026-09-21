@@ -349,3 +349,137 @@ async def test_new_tools_keyword_routing():
         "meeting_transcript",
     )
     assert any(i["suggested_tool"] == "clickup" for i in items2)
+
+
+class _StatusResp:
+    def __init__(self, status, payload=None):
+        self.status_code = status
+        self.is_success = 200 <= status < 300
+        self._payload = payload or {}
+
+    def json(self):
+        return self._payload
+
+
+class _SeqClient:
+    """Fake client replaying canned responses in order, capturing posts."""
+
+    def __init__(self, responses):
+        self.responses = list(responses)
+        self.posts = []
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *args):
+        return None
+
+    async def get(self, url, headers=None):
+        return self.responses.pop(0)
+
+    async def post(self, url, json=None, headers=None, data=None):
+        self.posts.append({"url": url, "json": json, "data": data})
+        return self.responses.pop(0)
+
+
+async def _seeded_token(self):
+    return "test-token"
+
+
+@pytest.mark.asyncio
+async def test_asana_workspaces_failure_reports_status():
+    """A failing workspaces call must surface its HTTP status, not the
+    generic 'no visible workspace' message."""
+    import app.mcp.connectors.asana_connector as ac
+
+    orig_client = ac.connector_http_client
+    orig_token = ac.AsanaConnector._get_token
+    ac.connector_http_client = lambda timeout=15.0: _SeqClient(
+        [_StatusResp(401, {"errors": [{"message": "Not Authorized"}]})]
+    )
+    ac.AsanaConnector._get_token = _seeded_token
+    try:
+        res = await ac.AsanaConnector().execute({"name": "x"}, sandbox_mode=False)
+        assert res.status == "failed"
+        assert "401" in (res.error or "")
+    finally:
+        ac.connector_http_client = orig_client
+        ac.AsanaConnector._get_token = orig_token
+
+
+@pytest.mark.asyncio
+async def test_clickup_missing_url_falls_back_to_deep_link():
+    """ClickUp list-task responses often omit url: success must still
+    carry a clickable link."""
+    import app.mcp.connectors.clickup_connector as cc
+
+    orig_client = cc.connector_http_client
+    orig_token = cc.ClickUpConnector._get_token
+    cc.connector_http_client = lambda timeout=15.0: _SeqClient(
+        [_StatusResp(200, {"id": "abc123", "name": "x"})]
+    )
+    cc.ClickUpConnector._get_token = _seeded_token
+    try:
+        res = await cc.ClickUpConnector().execute(
+            {"name": "x", "list_id": "123"}, sandbox_mode=False
+        )
+        assert res.status == "success"
+        assert res.external_url == "https://app.clickup.com/t/abc123"
+    finally:
+        cc.connector_http_client = orig_client
+        cc.ClickUpConnector._get_token = orig_token
+
+
+@pytest.mark.asyncio
+async def test_email_recipients_join_lists():
+    """List-form to/cc normalize to comma strings instead of Python
+    reprs that the Gmail API would reject."""
+    import base64
+    import app.mcp.connectors.email_draft_connector as ec
+
+    orig_client = ec.connector_http_client
+    orig_token = ec.EmailDraftConnector._get_token
+    clients = []
+    seq = _SeqClient([_StatusResp(200, {"id": "draft1"})])
+    clients.append(seq)
+    ec.connector_http_client = lambda timeout=15.0: seq
+    ec.EmailDraftConnector._get_token = _seeded_token
+    try:
+        res = await ec.EmailDraftConnector().execute(
+            {"subject": "s", "body": "b",
+             "to": ["a@x.co", "b@x.co"], "cc": ["c@x.co"]},
+            sandbox_mode=False,
+        )
+        assert res.status == "success"
+        raw = seq.posts[0]["json"]["message"]["raw"]
+        mime = base64.urlsafe_b64decode(raw).decode()
+        assert "a@x.co, b@x.co" in mime and "c@x.co" in mime
+        assert "['a@x.co'" not in mime
+    finally:
+        ec.connector_http_client = orig_client
+        ec.EmailDraftConnector._get_token = orig_token
+
+
+@pytest.mark.asyncio
+async def test_google_tasks_rejects_garbage_due_date():
+    """Non-date due values fail with a named error instead of a sliced
+    guess the API refuses opaquely (connector convention: failed result,
+    not a raise)."""
+    import app.mcp.connectors.google_tasks_connector as gc
+
+    orig_client = gc.connector_http_client
+    orig_token = gc.GoogleTasksConnector._get_token
+    seq = _SeqClient([_StatusResp(200, {"items": [{"id": "list1"}]})])
+    gc.connector_http_client = lambda timeout=15.0: seq
+    gc.GoogleTasksConnector._get_token = _seeded_token
+    try:
+        res = await gc.GoogleTasksConnector().execute(
+            {"title": "x", "due_date": "next Friday-ish"},
+            sandbox_mode=False,
+        )
+        assert res.status == "failed"
+        assert "due_date" in (res.error or "")
+        assert seq.posts == []  # rejected before any task POST
+    finally:
+        gc.connector_http_client = orig_client
+        gc.GoogleTasksConnector._get_token = orig_token

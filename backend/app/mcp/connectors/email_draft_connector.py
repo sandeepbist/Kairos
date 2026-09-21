@@ -24,6 +24,15 @@ from .base import BaseConnector, ExecutionResult
 from .http import connector_http_client
 
 
+def _join_recipients(value: Any) -> str:
+    """Normalizes a recipient field to a comma-joined string."""
+    if not value:
+        return ""
+    if isinstance(value, (list, tuple)):
+        return ", ".join(str(v).strip() for v in value if str(v).strip())
+    return str(value).strip()
+
+
 class EmailDraftConnector(BaseConnector):
     """Executes action items as ready-to-send Gmail drafts."""
 
@@ -60,8 +69,10 @@ class EmailDraftConnector(BaseConnector):
                 or "Draft from Kairos"
             )
             body = payload.get("body") or payload.get("description") or payload.get("notes") or ""
-            to = payload.get("to") or payload.get("attendee") or ""
-            cc = payload.get("cc") or ""
+            # Recipients may arrive as lists (review edits); join them —
+            # str([...]) would produce "['a@b']" and fail at the API.
+            to = _join_recipients(payload.get("to") or payload.get("attendee") or "")
+            cc = _join_recipients(payload.get("cc") or "")
 
             if sandbox_mode:
                 fake_id = _uuid.uuid4().hex[:16]

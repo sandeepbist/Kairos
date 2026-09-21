@@ -1,4 +1,5 @@
 """Notion Connector: Integrates with Official Notion API / MCP Server and Sandbox."""
+import logging
 import time
 import os
 import uuid
@@ -9,6 +10,8 @@ from app.db.models import OAuthTokenModel
 from app.core.security import decrypt_token
 from .base import BaseConnector, ExecutionResult
 from .http import connector_http_client
+
+logger = logging.getLogger(__name__)
 
 
 class NotionConnector(BaseConnector):
@@ -151,7 +154,11 @@ class NotionConnector(BaseConnector):
                                 if prop_meta.get("type") == "title":
                                     title_prop_name = prop_name
                                     break
-                    except Exception:
+                    except Exception as e:
+                        # Metadata is a nicety (real title-prop name); a
+                        # failure here must stay visible in logs while the
+                        # creation below still reports the provider truth.
+                        logger.warning("Notion database metadata fetch failed: %s", e)
                         pass
 
                     notion_body = {

@@ -104,7 +104,13 @@ class ClickUpConnector(BaseConnector):
                     return ExecutionResult(
                         tool=self.tool_name,
                         status="success",
-                        external_url=data.get("url"),
+                        # ClickUp list-task responses frequently omit the
+                        # task URL: fall back to the app deep link so
+                        # executed items always carry a clickable link.
+                        external_url=data.get("url") or (
+                            f"https://app.clickup.com/t/{data.get('id')}"
+                            if data.get("id") else None
+                        ),
                         latency_ms=latency_ms,
                         raw_response={
                             "id": data.get("id"),

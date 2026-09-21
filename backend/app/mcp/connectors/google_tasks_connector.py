@@ -108,8 +108,20 @@ class GoogleTasksConnector(BaseConnector):
                     "status": "needsAction",
                 }
                 if due:
-                    # Keep the date component; Tasks discards times.
-                    task_body["due"] = str(due)[:10] + "T00:00:00.000Z"
+                    # Tasks keeps the date component only: require a real
+                    # YYYY-MM-DD rather than shipping a sliced guess that
+                    # the provider rejects opaquely.
+                    due_text = str(due).strip()[:10]
+                    from datetime import date as _date
+
+                    try:
+                        _date.fromisoformat(due_text)
+                    except ValueError:
+                        raise ValueError(
+                            f"Google Tasks execution failed: due_date '{due}' "
+                            "is not a valid YYYY-MM-DD date."
+                        )
+                    task_body["due"] = due_text + "T00:00:00.000Z"
 
                 resp = await client.post(
                     TASKS_API + "/lists/" + str(list_id) + "/tasks",
