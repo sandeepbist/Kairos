@@ -497,3 +497,104 @@ async def test_slack_schedule_idempotent():
             await client.get_schedule_handle("kairos-slack-listen-test").delete()
         except Exception:
             pass
+
+
+@pytest.mark.asyncio
+async def test_gmail_poll_ingests_thread_and_advances_watermark(monkeypatch):
+    """Credentialed poll: one new thread becomes a batch, the watermark
+    advances, and a failed thread is recorded for retry (not skipped)."""
+    import base64
+    import json as _json
+
+    from sqlalchemy import delete as _delete
+    from sqlalchemy import select
+    from app.core.security import encrypt_token
+    from app.db.models import BatchModel, OAuthTokenModel
+    from app.db.session import async_session_factory
+    from app.temporal.activities import ingest_gmail_history_activity
+
+    body_b64 = base64.urlsafe_b64encode(b"Alex: please file this ticket now").decode()
+
+    class FakeResp:
+        def __init__(self, payload, status=200):
+            self._payload = payload
+            self.status_code = status
+            self.is_success = 200 <= status < 300
+
+        def json(self):
+            return self._payload
+
+    def _thread(tid, ok=True):
+        if not ok:
+            return FakeResp({}, 500)
+        return FakeResp({"messages": [{
+            "payload": {
+                "headers": [{"name": "Subject", "value": "Subj"}],
+                "parts": [{"mimeType": "text/plain",
+                           "body": {"data": body_b64}}],
+            },
+            "snippet": "snip",
+        }]})
+
+    class FakeClient:
+        def __init__(self, *a, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *a):
+            return None
+
+        async def get(self, url, params=None, headers=None):
+            if url.endswith("/profile"):
+                return FakeResp({"historyId": 999})
+            if "/history" in url:
+                return FakeResp({
+                    "historyId": 456,
+                    "history": [
+                        {"messagesAdded": [{"message": {"threadId": "good-tid"}}]},
+                        {"messagesAdded": [{"message": {"threadId": "bad-tid"}}]},
+                    ],
+                })
+            if "/threads/good-tid" in url:
+                return _thread("good-tid")
+            return _thread("bad-tid", ok=False)
+
+    async with async_session_factory() as session:
+        await session.execute(_delete(OAuthTokenModel).where(OAuthTokenModel.provider == "gmail"))
+        session.add(OAuthTokenModel(
+            provider="gmail",
+            access_token_enc=encrypt_token("fake-access"),
+            scopes=_json.dumps({"history_id": 123}),
+        ))
+        await session.commit()
+
+    import httpx as _httpx
+    monkeypatch.setattr(_httpx, "AsyncClient", FakeClient)
+    try:
+        result = await ingest_gmail_history_activity()
+        stored_scopes = {}
+        async with async_session_factory() as session:
+            rec = (
+                await session.execute(
+                    select(OAuthTokenModel).where(OAuthTokenModel.provider == "gmail")
+                )
+            ).scalar_one()
+            stored_scopes = _json.loads(rec.scopes)
+    finally:
+        async with async_session_factory() as session:
+            await session.execute(_delete(OAuthTokenModel).where(OAuthTokenModel.provider == "gmail"))
+            await session.commit()
+
+    assert result["polled"] is True
+    assert result["ingested"] == 1
+    assert result["history_id"] == 456
+    assert stored_scopes.get("history_id") == 456
+    assert "bad-tid" in stored_scopes.get("failed_threads", [])
+
+    async with async_session_factory() as session:
+        batches = (
+            await session.execute(select(BatchModel).where(BatchModel.source_type == "email_thread"))
+        ).scalars().all()
+        assert any("please file this ticket" in (b.raw_text or "") for b in batches)
