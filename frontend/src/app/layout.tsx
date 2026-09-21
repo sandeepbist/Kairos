@@ -20,6 +20,11 @@ export const metadata: Metadata = {
   title: "Kairos — Ambient Action Engine",
   description:
     "Turn unstructured conversations into executed actions across Notion, Jira, Calendar, and the Task Ledger — with human approval at every step.",
+  // Base for OG/Twitter image URLs; override per deploy so shares
+  // resolve to the public origin instead of localhost.
+  metadataBase: new URL(
+    process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000"
+  ),
   icons: { icon: [{ url: "/favicon.ico" }, { url: "/icon.svg", type: "image/svg+xml" }] },
 };
 
@@ -35,26 +40,7 @@ export default function RootLayout({
   return (
     <html lang="en" className={`${inter.variable} ${jetbrains.variable}`}>
       <body style={{ display: "flex", flexDirection: "column", minHeight: "100vh" }}>
-        <a
-          href="#main-content"
-          className="skip-link"
-          style={{
-            position: "absolute",
-            left: "-9999px",
-            top: "8px",
-            zIndex: 100,
-            padding: "8px 14px",
-            background: "var(--bg-raised)",
-            color: "var(--text)",
-            borderRadius: "var(--r-sm)",
-          }}
-          onFocus={(e) => {
-            (e.target as HTMLAnchorElement).style.left = "8px";
-          }}
-          onBlur={(e) => {
-            (e.target as HTMLAnchorElement).style.left = "-9999px";
-          }}
-        >
+        <a href="#main-content" className="skip-link">
           Skip to content
         </a>
         <Navbar />

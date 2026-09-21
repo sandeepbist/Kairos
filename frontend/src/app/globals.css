@@ -787,3 +787,21 @@ body {
     max-height: 60vh;
   }
 }
+
+/* ---- Skip link: off-screen until keyboard-focused ---- */
+.skip-link {
+  position: absolute;
+  left: -9999px;
+  top: 8px;
+  z-index: 100;
+  padding: 8px 14px;
+  background: var(--bg-raised);
+  color: var(--text);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-sm);
+  text-decoration: none;
+  font-size: 0.82rem;
+}
+.skip-link:focus-visible {
+  left: 8px;
+}
