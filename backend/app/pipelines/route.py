@@ -18,12 +18,22 @@ async def route_node(state: AgentState) -> dict[str, Any]:
         description = item.get("description", "")
         base_confidence = float(item.get("confidence", 0.8))
 
-        # Query adaptive memory
-        mem_decision = await routing_memory.query_routing_preference(
-            description=description,
-            initial_tool=initial_tool,
-            source_type=source_type,
-        )
+        # Query adaptive memory. A memory failure (DB/embeddings outage)
+        # must never sink the batch: fall back to the uncalibrated
+        # suggestion for this item and keep routing the rest.
+        try:
+            mem_decision = await routing_memory.query_routing_preference(
+                description=description,
+                initial_tool=initial_tool,
+                source_type=source_type,
+            )
+        except Exception:  # noqa: BLE001 — calibration is advisory
+            mem_decision = {
+                "suggested_tool": initial_tool,
+                "confidence_adjustment": 0.0,
+                "reason": None,
+                "neighbors": [],
+            }
 
         final_tool = mem_decision["suggested_tool"]
         confidence_delta = mem_decision["confidence_adjustment"]

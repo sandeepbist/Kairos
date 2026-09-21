@@ -112,3 +112,18 @@ def test_deterministic_output_still_validates():
     for item in items:
         validated = ExtractedActionItemSchema.model_validate(item)
         assert 0.0 <= validated.confidence <= 1.0
+
+
+def test_deterministic_extractor_survives_bare_colon_line():
+    """A line starting with ':' leaves the optional speaker group None;
+    attribution must skip it, not AttributeError the whole extraction."""
+    from app.pipelines.extract import deterministic_fallback_extractor
+
+    items = deterministic_fallback_extractor(
+        ": please file this ticket now", "meeting_transcript"
+    )
+    assert isinstance(items, list)
+    items2 = deterministic_fallback_extractor(
+        "Sarah: please file this ticket now", "meeting_transcript"
+    )
+    assert items2 and items2[0].get("speaker") == "Sarah"

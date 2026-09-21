@@ -115,9 +115,10 @@ def deterministic_fallback_extractor(
         speaker = None
         content = line
 
-        # 1. Speaker Attribution
+        # 1. Speaker Attribution (group(1) is optional: a line starting
+        # ": ..." must not AttributeError the whole extraction).
         match = speaker_pattern.match(line)
-        if match and not speaker_noop_pattern.match(match.group(1).strip()):
+        if match and match.group(1) and not speaker_noop_pattern.match(match.group(1).strip()):
             speaker = match.group(1).strip()
             content = match.group(2).strip()
         # Numbered email/bullet form: "1. Alex: Please prepare..." — the
