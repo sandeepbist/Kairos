@@ -62,7 +62,15 @@ def create_worker(client: Client) -> Worker:
 
 async def run_worker():
     """Main worker event loop."""
-    logging.basicConfig(level=logging.INFO)
+    # Force a plain StreamHandler on the root logger: some dependency
+    # (mcp/langsmith chain) installs a RichHandler at import time, and
+    # rich's handler re-enters rich imports while emitting. Inside
+    # Temporal's workflow sandbox that re-entrancy is fatal — rich 15+
+    # calls os.getcwd() at module import, which the sandbox restricts,
+    # so every workflow activation dies with a circular ImportError and
+    # batches stall in "processing" forever. Plain logging keeps the
+    # sandbox replay import-clean regardless of rich's version.
+    logging.basicConfig(level=logging.INFO, force=True)
     logger.info(f"Connecting Temporal worker to {settings.TEMPORAL_HOST}...")
     client = await get_temporal_client()
     worker = create_worker(client)
