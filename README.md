@@ -15,7 +15,7 @@ human approves every single item.
 [**Terms**](TERMS.md)
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-18181b?style=flat-square)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-220%20passing-4ade80?style=flat-square)](#testing)
+[![Tests](https://img.shields.io/badge/tests-225%20passing-4ade80?style=flat-square)](#testing)
 [![Python](https://img.shields.io/badge/python-3.12%2B-3776ab?style=flat-square&logo=python&logoColor=white)](https://www.python.org)
 [![Node](https://img.shields.io/badge/node-22-5fa04e?style=flat-square&logo=nodedotjs&logoColor=white)](https://nodejs.org)
 [![FastAPI](https://img.shields.io/badge/FastAPI-009488?style=flat-square&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com)
@@ -300,7 +300,7 @@ rather than run wide open.
 ./scripts/test.sh
 ```
 
-**220 tests** run against live PostgreSQL and Temporal:
+**225 tests** run against live PostgreSQL and Temporal:
 
 | Suite | Covers |
 |:---|:---|
