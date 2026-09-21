@@ -296,7 +296,7 @@ rather than run wide open.
 ./scripts/test.sh
 ```
 
-**202 tests** run against live PostgreSQL and Temporal:
+**203 tests** run against live PostgreSQL and Temporal:
 
 | Suite | Covers |
 |:---|:---|
