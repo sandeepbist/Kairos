@@ -276,3 +276,38 @@ async def test_poller_paths_503_redacted_on_transport_failure(monkeypatch):
         stop = client.post("/api/connectors/gmail/schedule/stop")
         assert stop.status_code == 503
         assert "SECRET123" not in stop.text
+
+
+@pytest.mark.asyncio
+async def test_setup_vanished_schedule_is_404_not_false_success(monkeypatch):
+    """Create reports AlreadyRunning but the row is gone: the API must
+    404 (retry recreates) instead of claiming 'resumed'."""
+    from temporalio.client import ScheduleAlreadyRunningError
+    from temporalio.service import RPCError, RPCStatusCode
+
+    class _Handle:
+        async def describe(self):
+            raise RPCError("gone", RPCStatusCode.NOT_FOUND, b"")
+
+    class _Client:
+        def get_schedule_handle(self, *a, **k):
+            return _Handle()
+
+        async def create_schedule(self, *a, **k):
+            raise ScheduleAlreadyRunningError()
+
+    async def _fake_client():
+        return _Client()
+
+    monkeypatch.setattr("app.temporal.worker.get_temporal_client", _fake_client)
+    # setup imports get_temporal_client from worker at call time
+    monkeypatch.setattr(
+        "app.api.endpoints.connectors.get_temporal_client", _fake_client, raising=False
+    )
+    from starlette.testclient import TestClient
+    from app.main import app
+
+    with TestClient(app, raise_server_exceptions=False) as client:
+        res = client.post("/api/connectors/gmail/schedule")
+        # 404 (the app's 404 handler generalizes the detail by design).
+        assert res.status_code == 404

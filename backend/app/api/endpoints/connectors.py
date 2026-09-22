@@ -276,14 +276,19 @@ async def _resume_if_paused(
         )
     except RPCError as e:
         # The create above just reported the schedule as existing; a
-        # vanished-in-between row is surfaced but never masked.
-        if e.status != RPCStatusCode.NOT_FOUND:
-            from app.core.redaction import redact_error
-
+        # vanished-in-between row is a 404 (retrying Start recreates it),
+        # never a false "resumed" success.
+        if e.status == RPCStatusCode.NOT_FOUND:
             raise HTTPException(
-                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail=f"Could not resume schedule: {redact_error(e)}",
-            ) from e
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Schedule vanished; retry Start to recreate it.",
+            )
+        from app.core.redaction import redact_error
+
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"Could not resume schedule: {redact_error(e)}",
+        ) from e
     except Exception as e:
         from app.core.redaction import redact_error
 
