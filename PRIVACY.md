@@ -192,7 +192,8 @@ ways:
 - **Deletion is available at any time.** `DELETE /api/history/batches/{id}`
   erases a batch and its action items and execution logs. Connector
   credentials can be removed from Settings via the Disconnect control.
-  Routing feedback rows contain no source text and are retained for the
+  Routing feedback rows contain no verbatim `raw_text` (derived
+  `item_description` plus embedding only) and are retained for the
   learning loop; operators who want them removed can truncate the
   `routing_feedback` table directly.
 - **Credential removal.** Disconnecting a provider deletes the encrypted

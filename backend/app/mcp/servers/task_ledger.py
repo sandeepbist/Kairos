@@ -16,12 +16,13 @@ from typing import Any
 from mcp.server.mcpserver import MCPServer
 from sqlalchemy import select
 
+from app.config import get_app_version
 from app.db.models import TaskLedgerModel
 from app.db.session import async_session_factory
 
 server = MCPServer(
     name="task-ledger",
-    version="1.0.0",
+    version=get_app_version(),
     description=(
         "Internal Task Ledger MCP server for action items and fallback tasks "
         "that do not map to external tools."

@@ -21,11 +21,11 @@ from typing import Any
 
 from mcp.server.mcpserver import MCPServer
 
-from app.config import settings
+from app.config import get_app_version, settings
 
 server = MCPServer(
     name="kairos",
-    version="1.0.0",
+    version=get_app_version(),
     description=(
         "Ambient action engine: submit transcripts, retrieve extracted "
         "action items with verbatim source quotes, and approve them for "

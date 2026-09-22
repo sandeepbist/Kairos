@@ -10,7 +10,7 @@ echo "=================================================="
 
 # Ensure infrastructure containers are up if down
 if ! (echo > /dev/tcp/127.0.0.1/5435) 2>/dev/null; then
-  echo "📦 Starting isolated Docker services (PostgreSQL, Redis, Temporal)..."
+  echo "📦 Starting isolated Docker services (PostgreSQL, Temporal)..."
   if command -v docker-compose &> /dev/null; then
     docker-compose -f docker-compose.dev.yml up -d
   else

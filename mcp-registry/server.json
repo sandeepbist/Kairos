@@ -2,7 +2,7 @@
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.sandeepbist/kairos",
   "title": "Kairos Task Ledger MCP Server",
-  "description": "Approve transcript action items into 12 tools; includes a standalone Postgres task ledger.",
+  "description": "Standalone Postgres task ledger (create/list/complete/delete tasks) — the durable fallback destination for action items.",
   "version": "0.1.0",
   "websiteUrl": "https://github.com/sandeepbist/Kairos",
   "repository": {

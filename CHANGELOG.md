@@ -99,7 +99,7 @@ explicit human approval.
   on an internal bridge network; only the frontend is published).
 - Multi-stage non-root Docker images with healthchecks for both backend
   and frontend.
-- GitHub Actions CI (`.github/workflows/ci.yml`): 166-test backend suite
+- GitHub Actions CI (`.github/workflows/ci.yml`): 237-test backend suite
   against live PostgreSQL + Temporal, extraction eval gate at a 90%
   floor over a 25-case golden set, frontend lint/typecheck/build.
 - Security scanning workflow (`.github/workflows/security.yml`):

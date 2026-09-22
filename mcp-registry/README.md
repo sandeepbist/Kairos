@@ -5,7 +5,7 @@ components to the [MCP Registry](https://registry.modelcontextprotocol.io),
 the directory that MCP hosts (Claude Desktop, Cursor, and others) read to
 discover and install servers.
 
-## Task Ledger (`com.kairos/task-ledger`)
+## Task Ledger (`io.github.sandeepbist/kairos`)
 
 A Postgres-backed MCP server exposing four tools — `create_task`,
 `list_tasks`, `complete_task`, `delete_task`. It ships inside the Kairos
