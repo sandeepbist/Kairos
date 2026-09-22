@@ -235,6 +235,11 @@ async def approve_batch_items(
     db: AsyncSession = Depends(get_db),
 ):
     """Sends human approval decisions to the waiting Temporal workflow signal."""
+    if request.batch_id != batch_id:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Body batch_id does not match the URL batch id.",
+        )
     query = select(BatchModel).where(BatchModel.id == batch_id)
     result = await db.execute(query)
     batch = result.scalar_one_or_none()

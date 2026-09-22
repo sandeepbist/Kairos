@@ -232,3 +232,15 @@ async def test_approve_maps_engine_failure_to_status(monkeypatch):
         monkeypatch.setattr("app.api.endpoints.batches.get_temporal_client", _gone)
         res = await client.post(f"/api/batches/{batch_id}/approve", json=body)
         assert res.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_approve_rejects_body_url_batch_mismatch():
+    """A body batch_id that disagrees with the URL is a client bug:
+    422, never silently applied to the wrong batch."""
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        res = await client.post(
+            f"/api/batches/{uuid.uuid4()}/approve",
+            json={"batch_id": str(uuid.uuid4()), "decisions": []},
+        )
+        assert res.status_code == 422
