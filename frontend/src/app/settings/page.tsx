@@ -473,8 +473,9 @@ export default function SettingsPage() {
           >
             {TARGET_FIELDS.map((field) => (
               <div key={field.key}>
-                <label className="field-label">{field.label}</label>
+                <label className="field-label" htmlFor={`target-${field.key}`}>{field.label}</label>
                 <input
+                  id={`target-${field.key}`}
                   type="text"
                   className="input mono"
                   placeholder={field.placeholder}
