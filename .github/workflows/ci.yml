@@ -124,6 +124,14 @@ jobs:
       - name: Install dependencies
         working-directory: frontend
         run: npm ci
+      - name: Generated legal content is fresh
+        # sync-legal.mjs regenerates lib/legal-content.ts from the root
+        # PRIVACY.md/TERMS.md at build time; dev runs read the committed
+        # copy, so fail if a doc edit wasn't regenerated + committed.
+        run: |
+          cd frontend && npm run sync-legal
+          git diff --exit-code -- frontend/src/lib/legal-content.ts || \
+            (echo "::error::lib/legal-content.ts is stale; run npm run sync-legal and commit it" && exit 1)
       - name: Lint
         working-directory: frontend
         run: npm run lint
