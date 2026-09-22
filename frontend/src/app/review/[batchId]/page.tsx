@@ -314,8 +314,8 @@ export default function ReviewPage({
   if (loading && (!batch || batch.status === "processing")) {
     return (
       <div className="container" style={{ maxWidth: "760px" }}>
-        <div style={{ marginBottom: "36px", display: "flex", alignItems: "center", gap: "12px" }}>
-          <span className="spinner" />
+        <div role="status" aria-label="Extracting actions" style={{ marginBottom: "36px", display: "flex", alignItems: "center", gap: "12px" }}>
+          <span className="spinner" aria-hidden="true" />
           <div>
             <p className="h-title">Extracting actions</p>
             <p className="dim" style={{ fontSize: "0.84rem", marginTop: "2px" }}>
@@ -454,6 +454,14 @@ export default function ReviewPage({
 
         {/* Right: cards */}
         <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+          {batch && batch.items.length === 0 && (
+            <div className="panel" style={{ padding: "28px 24px", textAlign: "center" }}>
+              <p className="h-section" style={{ marginBottom: "6px" }}>No action items found</p>
+              <p className="dim" style={{ fontSize: "0.84rem" }}>
+                Extraction completed but identified no commitments in this text.
+              </p>
+            </div>
+          )}
           {batch?.items.map((item) => (
             <div
               key={item.id}

@@ -327,3 +327,88 @@ async def test_forged_approval_rejected_by_validator():
             await worker_task
         except asyncio.CancelledError:
             pass
+
+
+@pytest.mark.asyncio
+async def test_webhook_emit_failure_never_stalls_batch(monkeypatch):
+    """Every webhook fan-out goes through _emit's swallow-and-continue:
+    even a crashing emit activity must leave the batch completed."""
+    import app.temporal.workflows as wf_mod
+    from temporalio import activity as _activity
+
+    @_activity.defn(name="emit_webhook_event_activity")
+    async def _boom_emit(event_type: str, data: dict) -> dict:
+        raise RuntimeError("webhook emit boom")
+
+    monkeypatch.setattr(
+        wf_mod, "emit_webhook_event_activity", _boom_emit, raising=True
+    )
+
+    client = await Client.connect(settings.TEMPORAL_HOST, namespace=settings.TEMPORAL_NAMESPACE)
+    test_queue = f"test-queue-{uuid.uuid4()}"
+    worker = Worker(
+        client,
+        task_queue=test_queue,
+        workflows=[ProcessBatchWorkflow],
+        activities=[
+            extract_and_route_activity,
+            persist_extracted_items_activity,
+            execute_approved_item_activity,
+            reject_item_activity,
+            update_routing_memory_activity,
+            complete_batch_activity,
+            expire_batch_activity,
+            _boom_emit,
+        ],
+    )
+    worker_task = asyncio.create_task(worker.run())
+    try:
+        batch_id = str(uuid.uuid4())
+        workflow_id = f"batch-wf-emitfail-{batch_id}"
+        async with async_session_factory() as session:
+            session.add(BatchModel(
+                id=batch_id,
+                source_type="meeting_transcript",
+                raw_text="Sarah: Alex, please file a ticket for the emit guard bug.",
+                status="processing",
+                temporal_workflow_id=workflow_id,
+            ))
+            await session.commit()
+
+        handle = await client.start_workflow(
+            ProcessBatchWorkflow.run,
+            args=[batch_id, "Sarah: Alex, please file a ticket for the emit guard bug.",
+                  "meeting_transcript", True],
+            id=workflow_id,
+            task_queue=test_queue,
+        )
+        for _ in range(30):
+            await asyncio.sleep(0.5)
+            async with async_session_factory() as session:
+                b = (
+                    await session.execute(select(BatchModel).where(BatchModel.id == batch_id))
+                ).scalar_one_or_none()
+                if b and b.status == "awaiting_approval":
+                    break
+
+        async with async_session_factory() as session:
+            items = (
+                await session.execute(select(ActionItemModel).where(ActionItemModel.batch_id == batch_id))
+            ).scalars().all()
+            assert items, "extraction must complete despite broken emit"
+            decisions = [{"item_id": i.id, "action": "APPROVE"} for i in items]
+
+        await handle.execute_update(ProcessBatchWorkflow.ApprovalReceived, decisions)
+        result = await handle.result()
+        assert result["status"] == "completed"
+        async with async_session_factory() as session:
+            b_final = (
+                await session.execute(select(BatchModel).where(BatchModel.id == batch_id))
+            ).scalar_one()
+            assert b_final.status == "completed"
+    finally:
+        worker_task.cancel()
+        try:
+            await worker_task
+        except asyncio.CancelledError:
+            pass
