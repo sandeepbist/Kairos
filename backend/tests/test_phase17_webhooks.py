@@ -541,3 +541,43 @@ async def test_webhook_test_endpoint_503_on_emit_failure(monkeypatch):
             assert "SECRETXYZ" not in test.text
         finally:
             await client.delete(f"/api/webhooks/{endpoint_id}")
+
+
+@pytest.mark.asyncio
+async def test_redeliver_resets_failed_delivery():
+    """Redeliver re-queues a failed delivery (pending, attempts reset)
+    and rejects unknown ids with 404."""
+    import uuid as _uuid
+    from httpx import ASGITransport, AsyncClient
+
+    from app.db.models import WebhookDeliveryModel, WebhookEndpointModel
+    from app.db.session import async_session_factory
+    from app.main import app
+
+    endpoint_id = str(_uuid.uuid4())
+    delivery_id = str(_uuid.uuid4())
+    async with async_session_factory() as session:
+        session.add(WebhookEndpointModel(
+            id=endpoint_id, url="https://hooks.example.com/kairos",
+            description="redeliver case", secret_enc="enc",
+            event_types=["*"],
+        ))
+        session.add(WebhookDeliveryModel(
+            id=delivery_id, endpoint_id=endpoint_id, msg_id="msg_test",
+            event_type="webhook.test", payload={}, status="failed",
+            attempts=3,
+        ))
+        await session.commit()
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        try:
+            res = await client.post(
+                f"/api/webhooks/{endpoint_id}/deliveries/{delivery_id}/redeliver"
+            )
+            assert res.status_code == 200
+            assert res.json()["status"] == "redispatched"
+            missing = await client.post(
+                f"/api/webhooks/{endpoint_id}/deliveries/nope/redeliver"
+            )
+            assert missing.status_code == 404
+        finally:
+            await client.delete(f"/api/webhooks/{endpoint_id}")

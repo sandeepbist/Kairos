@@ -68,11 +68,18 @@ async def _load_endpoint(
 async def _load_delivery(
     endpoint_id: str, delivery_id: str, db: AsyncSession
 ) -> WebhookDeliveryModel:
-    rows = await db.scalars(select(WebhookDeliveryModel))
-    for delivery in rows:
-        if delivery.id == delivery_id and delivery.endpoint_id == endpoint_id:
-            return delivery
-    raise HTTPException(status_code=404, detail="Delivery not found")
+    """Deliveries are unbounded over time: filter in SQL, never scan."""
+    delivery = (
+        await db.execute(
+            select(WebhookDeliveryModel).where(
+                WebhookDeliveryModel.id == delivery_id,
+                WebhookDeliveryModel.endpoint_id == endpoint_id,
+            )
+        )
+    ).scalar_one_or_none()
+    if delivery is None:
+        raise HTTPException(status_code=404, detail="Delivery not found")
+    return delivery
 
 
 def _endpoint_dict(endpoint: WebhookEndpointModel) -> dict[str, Any]:
