@@ -228,3 +228,39 @@ async def test_stream_events_orders_and_closes_on_terminal():
         seen.append(event)
     assert [e["seq"] for e in seen] == [0, 1, 2]
     assert [e["type"] for e in seen] == ["a", "b", "c"]
+
+
+@pytest.mark.asyncio
+async def test_routing_memory_semantic_override_flips_tool(monkeypatch):
+    """With embeddings available, a semantically identical past override
+    flips the suggestion with a confidence bonus (embedding path, not
+    just the keyword backstop)."""
+    from app.db.session import async_session_factory
+    from app.db.models import RoutingFeedbackModel
+    import app.pipelines.memory as mem_mod
+
+    vec = [1.0, 0.0, 0.0]
+
+    async def _fake_embed(self, text):
+        return list(vec)
+
+    monkeypatch.setattr(mem_mod.EmbeddingService, "embed", _fake_embed)
+    async with async_session_factory() as session:
+        session.add(RoutingFeedbackModel(
+            item_id=str(uuid.uuid4()),
+            batch_id=str(uuid.uuid4()),
+            item_description="File the checkout bug report",
+            suggested_tool="task_ledger",
+            final_tool="jira",
+            was_overridden=True,
+            embedding=list(vec),
+        ))
+        await session.commit()
+
+    out = await mem_mod.routing_memory.query_routing_preference(
+        description="File the checkout bug report",
+        initial_tool="task_ledger",
+        source_type="meeting_transcript",
+    )
+    assert out["suggested_tool"] == "jira"
+    assert out["confidence_adjustment"] == 0.15
