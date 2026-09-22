@@ -240,7 +240,19 @@ async def _schedule_state(schedule_id: str) -> dict[str, Any]:
     except RPCError as e:
         if e.status == RPCStatusCode.NOT_FOUND:
             return {"armed": False, "state": "missing"}
-        raise
+        from app.core.redaction import redact_error
+
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"Poller status unavailable: {redact_error(e)}",
+        ) from e
+    except Exception as e:
+        from app.core.redaction import redact_error
+
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"Poller status unavailable: {redact_error(e)}",
+        ) from e
     return {
         "armed": True,
         "state": "paused" if desc.schedule.state.paused else "running",
@@ -266,10 +278,19 @@ async def _resume_if_paused(
         # The create above just reported the schedule as existing; a
         # vanished-in-between row is surfaced but never masked.
         if e.status != RPCStatusCode.NOT_FOUND:
+            from app.core.redaction import redact_error
+
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail=f"Could not resume schedule: {e.message}",
-            )
+                detail=f"Could not resume schedule: {redact_error(e)}",
+            ) from e
+    except Exception as e:
+        from app.core.redaction import redact_error
+
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"Could not resume schedule: {redact_error(e)}",
+        ) from e
     return {"status": "scheduled", "interval_minutes": interval_minutes, "note": "resumed paused schedule"}
 
 
@@ -300,10 +321,19 @@ async def _pause_schedule(schedule_id: str, what: str) -> dict[str, str]:
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"No {what} schedule exists to pause.",
             )
+        from app.core.redaction import redact_error
+
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=f"Could not pause {what} schedule: {e.message}",
-        )
+            detail=f"Could not pause {what} schedule: {redact_error(e)}",
+        ) from e
+    except Exception as e:
+        from app.core.redaction import redact_error
+
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"Could not pause {what} schedule: {redact_error(e)}",
+        ) from e
     return {"status": "paused", "schedule": schedule_id}
 
 

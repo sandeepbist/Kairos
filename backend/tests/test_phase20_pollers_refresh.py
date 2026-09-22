@@ -254,3 +254,25 @@ async def test_google_tasks_falls_back_to_calendar_row():
             )
         )
         await session.commit()
+
+
+@pytest.mark.asyncio
+async def test_poller_paths_503_redacted_on_transport_failure(monkeypatch):
+    """Dead Temporal (connection refused, not RPCError) must 503 with the
+    credential stripped — never a raw 500. Hostnames stay: diagnostic,
+    not secret."""
+    async def _dead():
+        raise ConnectionError("refused by internal-host token=SECRET123")
+
+    monkeypatch.setattr("app.temporal.worker.get_temporal_client", _dead)
+    from starlette.testclient import TestClient
+    from app.main import app
+
+    with TestClient(app, raise_server_exceptions=False) as client:
+        res = client.get("/api/connectors/pollers")
+        assert res.status_code == 503
+        assert "SECRET123" not in res.text
+
+        stop = client.post("/api/connectors/gmail/schedule/stop")
+        assert stop.status_code == 503
+        assert "SECRET123" not in stop.text
