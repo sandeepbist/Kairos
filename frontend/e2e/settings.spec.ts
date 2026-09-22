@@ -83,3 +83,21 @@ test("settings vault save + disconnect cycle", async ({ page }) => {
     page.getByText("gemini credential removed from the vault.", { exact: true })
   ).toBeVisible({ timeout: 15_000 });
 });
+
+test("webhooks create + delete cycle", async ({ page }) => {
+  // Writes: create + arm + delete. Deletes with confirm accept; nothing left behind.
+  await page.goto("/settings", { waitUntil: "domcontentloaded" });
+  await expect(page.getByLabel("Webhook URL")).toBeVisible({ timeout: 20_000 });
+  await page.getByLabel("Webhook URL").fill("https://example.com/e2e-hook");
+  await page.getByLabel("Webhook description").fill("e2e-hook");
+  await page.getByRole("button", { name: "Add", exact: true }).click();
+  await expect(page.getByText("Endpoint registered", { exact: false })).toBeVisible({
+    timeout: 15_000,
+  });
+
+  page.on("dialog", (dialog) => dialog.accept());
+  await page.getByRole("button", { name: "Delete webhook e2e-hook" }).click();
+  await expect(page.getByText("e2e-hook", { exact: false })).toHaveCount(0, {
+    timeout: 15_000,
+  });
+});
