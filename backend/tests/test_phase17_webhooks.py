@@ -507,3 +507,37 @@ def test_retry_schedule_matches_spec():
 
     assert _WEBHOOK_RETRY_DELAYS == (5, 300, 1800, 7200, 18000, 36000, 50400, 72000, 86400)
     assert _WEBHOOK_MAX_ATTEMPTS == 10
+
+
+@pytest.mark.asyncio
+async def test_webhook_test_endpoint_503_on_emit_failure(monkeypatch):
+    """A crashing emit activity must 503 redacted, not raw-500, on the
+    manual test path. Endpoint row inserted directly (no DNS needed)."""
+    import uuid as _uuid
+    from httpx import ASGITransport, AsyncClient
+
+    from app.db.models import WebhookEndpointModel
+    from app.db.session import async_session_factory
+    from app.main import app
+
+    async def _boom(*a, **k):
+        raise RuntimeError("emit exploded key=SECRETXYZ")
+
+    monkeypatch.setattr(
+        "app.temporal.activities.emit_webhook_event_activity", _boom
+    )
+    endpoint_id = str(_uuid.uuid4())
+    async with async_session_factory() as session:
+        session.add(WebhookEndpointModel(
+            id=endpoint_id, url="https://hooks.example.com/kairos",
+            description="boom case", secret_enc="enc",
+            event_types=["*"],
+        ))
+        await session.commit()
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        try:
+            test = await client.post(f"/api/webhooks/{endpoint_id}/test")
+            assert test.status_code == 503
+            assert "SECRETXYZ" not in test.text
+        finally:
+            await client.delete(f"/api/webhooks/{endpoint_id}")

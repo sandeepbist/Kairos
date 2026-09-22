@@ -26,7 +26,14 @@ async def lifespan(app: FastAPI):
         settings.APP_ENV,
         settings.SANDBOX_MODE,
     )
-    await init_db()
+    try:
+        await init_db()
+    except RuntimeError:
+        logger.error(
+            "Database schema not initialized. Run migrations first: "
+            "'alembic upgrade head' from the backend directory."
+        )
+        raise
     yield
     logger.info("Shutdown signal received; flushing telemetry.")
     from app.core.telemetry import telemetry

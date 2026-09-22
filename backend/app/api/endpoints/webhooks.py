@@ -193,11 +193,19 @@ async def test_webhook(
     await _load_endpoint(endpoint_id, db)
     from app.temporal.activities import emit_webhook_event_activity
 
-    result = await emit_webhook_event_activity(
-        "webhook.test",
-        {"message": "Kairos webhook test", "endpoint_id": endpoint_id},
-        target_endpoint_id=endpoint_id,
-    )
+    try:
+        result = await emit_webhook_event_activity(
+            "webhook.test",
+            {"message": "Kairos webhook test", "endpoint_id": endpoint_id},
+            target_endpoint_id=endpoint_id,
+        )
+    except Exception as e:
+        from app.core.redaction import redact_error
+
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"Webhook test dispatch failed: {redact_error(e)}",
+        )
     return {"status": "test_dispatched", "deliveries": result.get("deliveries", 0)}
 
 
@@ -209,9 +217,13 @@ async def list_deliveries(
 ):
     """Recent delivery attempts with outcome bookkeeping."""
     await _load_endpoint(endpoint_id, db)
-    rows = await db.scalars(select(WebhookDeliveryModel))
-    mine = [d for d in rows if d.endpoint_id == endpoint_id]
-    mine.sort(key=lambda d: d.created_at, reverse=True)
+    rows = await db.scalars(
+        select(WebhookDeliveryModel)
+        .where(WebhookDeliveryModel.endpoint_id == endpoint_id)
+        .order_by(WebhookDeliveryModel.created_at.desc())
+        .limit(min(limit, 50))
+    )
+    mine = list(rows)
     from app.core.redaction import redact_secrets
 
     return {
@@ -227,7 +239,7 @@ async def list_deliveries(
                 "created_at": d.created_at.isoformat() if d.created_at else None,
                 "delivered_at": d.delivered_at.isoformat() if d.delivered_at else None,
             }
-            for d in mine[: min(limit, 50)]
+            for d in mine
         ]
     }
 
@@ -281,6 +293,19 @@ async def arm_dispatch_schedule():
             ),
         )
     except ScheduleAlreadyRunningError:
+        # A paused schedule reports the same error: resume it so arm
+        # genuinely re-arms (mirrors the Gmail/Slack poller contract).
+        try:
+            from temporalio.service import RPCError
+
+            handle = (await get_temporal_client()).get_schedule_handle(
+                "kairos-webhook-dispatch"
+            )
+            if (await handle.describe()).schedule.state.paused:
+                await handle.unpause(note="Resumed via Kairos webhooks API.")
+                return {"status": "scheduled", "interval_minutes": 5, "note": "resumed paused schedule"}
+        except RPCError:
+            pass
         return {"status": "scheduled", "interval_minutes": 5, "note": "existing schedule kept"}
     except Exception as e:
         from app.core.redaction import redact_error
