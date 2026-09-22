@@ -192,3 +192,43 @@ async def test_api_validation_errors():
         # Non-existent batch ID
         res_404 = await client.get(f"/api/batches/{uuid.uuid4()}")
         assert res_404.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_approve_maps_engine_failure_to_status(monkeypatch):
+    """Dead engine -> 503; missing workflow (NOT_FOUND) -> 404; never a
+    raw 500 on the approve path."""
+    from temporalio.service import RPCError, RPCStatusCode
+    from app.db.models import BatchModel
+
+    batch_id = str(uuid.uuid4())
+    async with async_session_factory() as session:
+        session.add(BatchModel(
+            id=batch_id, raw_text="Sarah: file the status mapping bug",
+            status="awaiting_approval", temporal_workflow_id=f"batch-wf-{batch_id}",
+        ))
+        await session.commit()
+
+    body = {"batch_id": batch_id, "decisions": []}
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        async def _dead():
+            raise ConnectionError("engine down")
+
+        monkeypatch.setattr("app.api.endpoints.batches.get_temporal_client", _dead)
+        res = await client.post(f"/api/batches/{batch_id}/approve", json=body)
+        assert res.status_code == 503
+
+        class _Handle:
+            async def execute_update(self, *a, **k):
+                raise RPCError("no such workflow", RPCStatusCode.NOT_FOUND, b"")
+
+        class _Client:
+            def get_workflow_handle(self, *a, **k):
+                return _Handle()
+
+        async def _gone():
+            return _Client()
+
+        monkeypatch.setattr("app.api.endpoints.batches.get_temporal_client", _gone)
+        res = await client.post(f"/api/batches/{batch_id}/approve", json=body)
+        assert res.status_code == 404

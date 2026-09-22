@@ -270,8 +270,20 @@ async def approve_batch_items(
     except HTTPException:
         raise
     except Exception as e:
+        from temporalio.service import RPCError, RPCStatusCode
+
         from app.core.redaction import redact_error
 
+        if isinstance(e, RPCError) and e.status == RPCStatusCode.NOT_FOUND:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Batch workflow not found on the execution engine.",
+            )
+        if isinstance(e, (RPCError, ConnectionError, TimeoutError, OSError)):
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail=f"Execution engine unreachable: {redact_error(e)}",
+            )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to submit approval to workflow: {redact_error(e)}",
