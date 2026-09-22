@@ -214,11 +214,12 @@ export function PayloadModal({
     // Remember what had focus before the dialog opened…
     previouslyFocusedRef.current = document.activeElement as HTMLElement | null;
 
-    // …and move focus to the first focusable element inside the dialog
+    // …and move focus to the first field (not the header Close button)
+    // so keyboard operators land where the work is.
     const dialog = dialogRef.current;
     if (dialog) {
-      const first = dialog.querySelector<HTMLElement>(FOCUSABLE_SELECTOR);
-      (first ?? dialog).focus();
+      const field = dialog.querySelector<HTMLElement>("input, select, textarea");
+      (field ?? dialog.querySelector<HTMLElement>(FOCUSABLE_SELECTOR) ?? dialog).focus();
     }
 
     // On close/unmount, hand focus back to the trigger element

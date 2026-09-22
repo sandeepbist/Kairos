@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { deleteBatch, getHistory } from "@/lib/api";
 import { errorMessage } from "@/lib/errors";
@@ -25,31 +25,47 @@ export default function HistoryPage() {
   const [notice, setNotice] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
-  const fetchHistoryData = useCallback(async () => {
+  const liveRef = useRef(true);
+
+  const fetchHistoryData = useCallback(async (): Promise<boolean> => {
     try {
       const data = await getHistory();
       setHistory(data);
       setError(null);
+      liveRef.current = data.some((b) => !TERMINAL_STATUSES.has(b.status));
+      return true;
     } catch (err) {
       setError(errorMessage(err, "Failed to fetch history"));
+      return false;
     } finally {
       setLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    const initialFetch = setTimeout(fetchHistoryData, 0);
-    const interval = setInterval(() => {
-      if (document.hidden) return;
-      fetchHistoryData();
-    }, 4000);
+    // Back off on consecutive failures; slow to 30s when every row is
+    // terminal instead of polling a settled list at full rate.
+    let failures = 0;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    let stopped = false;
+    const tick = async () => {
+      if (!stopped && !document.hidden) {
+        const ok = await fetchHistoryData();
+        failures = ok ? 0 : failures + 1;
+      }
+      if (!stopped) {
+        const base = liveRef.current ? 4000 : 30000;
+        timer = setTimeout(tick, Math.min(base * 2 ** failures, 60000));
+      }
+    };
+    timer = setTimeout(tick, 0);
     const onVisible = () => {
       if (!document.hidden) fetchHistoryData();
     };
     document.addEventListener("visibilitychange", onVisible);
     return () => {
-      clearTimeout(initialFetch);
-      clearInterval(interval);
+      stopped = true;
+      if (timer) clearTimeout(timer);
       document.removeEventListener("visibilitychange", onVisible);
     };
   }, [fetchHistoryData]);
