@@ -213,12 +213,22 @@ export function WebhooksPanel() {
   };
 
   const toggleEnabled = async (ep: WebhookEndpoint) => {
-    await updateWebhook(ep.id, { enabled: !ep.enabled }).catch(() => {});
-    load();
+    try {
+      await updateWebhook(ep.id, { enabled: !ep.enabled });
+      load();
+    } catch (err) {
+      setMessage({ text: errorMessage(err, "Failed to toggle endpoint"), type: "error" });
+    }
   };
 
-  const handleDelete = async (id: string) => {
-    await deleteWebhook(id).catch(() => {});
+  const handleDelete = async (id: string, description: string) => {
+    if (!window.confirm(`Delete webhook "${description}"? Deliveries history goes with it.`)) return;
+    try {
+      await deleteWebhook(id);
+    } catch (err) {
+      setMessage({ text: errorMessage(err, "Failed to delete webhook"), type: "error" });
+      return;
+    }
     if (openDeliveriesId === id) setOpenDeliveriesId(null);
     if (editingEvents === id) setEditingEvents(null);
     load();
@@ -394,7 +404,7 @@ export function WebhooksPanel() {
               <button
                 type="button"
                 className="btn btn-ghost btn-sm"
-                onClick={() => handleDelete(ep.id)}
+                onClick={() => handleDelete(ep.id, ep.description || ep.url)}
                 aria-label={`Delete webhook ${ep.description || ep.url}`}
               >
                 Delete

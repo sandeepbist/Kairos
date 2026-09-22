@@ -225,7 +225,8 @@ export default function SettingsPage() {
     }
   };
 
-  const handleDeleteToken = async (provider: string) => {
+  const handleDeleteToken = async (provider: string, label: string) => {
+    if (!window.confirm(`Disconnect ${label}? Live executions using this credential will fail until it is reconnected.`)) return;
     setSavingProvider(provider);
     setMessage(null);
     try {
@@ -537,7 +538,7 @@ export default function SettingsPage() {
                   <button
                     type="button"
                     className="btn btn-ghost btn-sm"
-                    onClick={() => handleDeleteToken(card.provider)}
+                    onClick={() => handleDeleteToken(card.provider, card.label)}
                     disabled={savingProvider === card.provider}
                     aria-describedby={`cred-label-${card.provider}`}
                   >
