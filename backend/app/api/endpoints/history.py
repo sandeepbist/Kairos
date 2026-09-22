@@ -83,8 +83,9 @@ async def delete_batch(
     (processing/executing) are refused with 409 — deleting under a live
     workflow would leave it retrying against a missing parent.
     """
-    batches = list(await db.scalars(select(BatchModel)))
-    batch = next((b for b in batches if b.id == batch_id), None)
+    batch = (
+        await db.execute(select(BatchModel).where(BatchModel.id == batch_id))
+    ).scalar_one_or_none()
     if not batch:
         from fastapi import HTTPException, status
         raise HTTPException(
