@@ -61,7 +61,12 @@ def create_worker(client: Client) -> Worker:
 
 
 async def run_worker():
-    """Main worker event loop."""
+    """Main worker event loop with reconnect.
+
+    The worker container's healthcheck is disabled (no HTTP listener),
+    so a crash would sit wedged until someone restarts it. Reconnect
+    here instead with capped backoff; a clean shutdown still exits.
+    """
     # Force a plain StreamHandler on the root logger: some dependency
     # (mcp/langsmith chain) installs a RichHandler at import time, and
     # rich's handler re-enters rich imports while emitting. Inside
@@ -71,11 +76,27 @@ async def run_worker():
     # batches stall in "processing" forever. Plain logging keeps the
     # sandbox replay import-clean regardless of rich's version.
     logging.basicConfig(level=logging.INFO, force=True)
-    logger.info(f"Connecting Temporal worker to {settings.TEMPORAL_HOST}...")
-    client = await get_temporal_client()
-    worker = create_worker(client)
-    logger.info(f"Temporal Worker running on queue: {settings.TEMPORAL_TASK_QUEUE}")
-    await worker.run()
+    backoff = 1.0
+    while True:
+        try:
+            logger.info(f"Connecting Temporal worker to {settings.TEMPORAL_HOST}...")
+            client = await get_temporal_client()
+            worker = create_worker(client)
+            logger.info(f"Temporal Worker running on queue: {settings.TEMPORAL_TASK_QUEUE}")
+            await worker.run()
+            return
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:
+            from app.core.redaction import redact_error
+
+            logger.error(
+                "Worker crashed (%s); reconnecting in %.0fs.",
+                redact_error(e),
+                backoff,
+            )
+            await asyncio.sleep(backoff)
+            backoff = min(backoff * 2, 60.0)
 
 
 if __name__ == "__main__":

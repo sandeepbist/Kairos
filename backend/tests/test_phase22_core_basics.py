@@ -54,3 +54,30 @@ def test_unknown_route_returns_json_404():
         res = client.get("/api/does-not-exist")
         assert res.status_code == 404
         assert res.json() == {"detail": "Resource not found."}
+
+
+@pytest.mark.asyncio
+async def test_run_worker_retries_and_respects_cancel(monkeypatch):
+    """A dead Temporal server must not kill the worker process: it backs
+    off and retries, while cancellation still propagates on shutdown."""
+    import asyncio as _asyncio
+
+    import app.temporal.worker as _worker
+
+    calls = 0
+
+    async def _dead():
+        nonlocal calls
+        calls += 1
+        raise ConnectionError("temporal down")
+
+    monkeypatch.setattr(_worker, "get_temporal_client", _dead)
+    with pytest.raises(TimeoutError):
+        await _asyncio.wait_for(_worker.run_worker(), timeout=2.5)
+    assert calls >= 2
+
+    task = _asyncio.create_task(_worker.run_worker())
+    await _asyncio.sleep(0.2)
+    task.cancel()
+    with pytest.raises(_asyncio.CancelledError):
+        await task
