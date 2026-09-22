@@ -156,9 +156,9 @@ export default function LedgerPage() {
 
       {/* Loading skeletons */}
       {loading && (
-        <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+        <div role="status" aria-label="Loading tasks" style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
           {[0, 1, 2, 3].map((i) => (
-            <div key={i} className="skeleton" style={{ height: "64px", borderRadius: "var(--r-lg)" }} />
+            <div key={i} className="skeleton" aria-hidden="true" style={{ height: "64px", borderRadius: "var(--r-lg)" }} />
           ))}
         </div>
       )}

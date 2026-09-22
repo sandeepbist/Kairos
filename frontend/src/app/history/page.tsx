@@ -140,9 +140,9 @@ export default function HistoryPage() {
 
       {/* Loading skeletons */}
       {loading && (
-        <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+        <div role="status" aria-label="Loading history" style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
           {[0, 1, 2].map((i) => (
-            <div key={i} className="skeleton" style={{ height: "96px", borderRadius: "var(--r-lg)" }} />
+            <div key={i} className="skeleton" aria-hidden="true" style={{ height: "96px", borderRadius: "var(--r-lg)" }} />
           ))}
         </div>
       )}

@@ -373,26 +373,39 @@ export function WebhooksPanel() {
               </span>
             </div>
             <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
-              <button className="btn btn-ghost btn-sm" onClick={() => handleTest(ep.id)} disabled={busy}>
+              <button type="button" className="btn btn-ghost btn-sm" onClick={() => handleTest(ep.id)} disabled={busy}>
                 Test
               </button>
               <button
+                type="button"
                 className="btn btn-ghost btn-sm"
                 onClick={() => startEditEvents(ep)}
                 aria-expanded={editingEvents === ep.id}
+                aria-controls={`events-${ep.id}`}
               >
                 Events
               </button>
-              <button className="btn btn-ghost btn-sm" onClick={() => toggleEnabled(ep)}>
+              <button type="button" className="btn btn-ghost btn-sm" onClick={() => toggleEnabled(ep)}>
                 {ep.enabled ? "Disable" : "Enable"}
               </button>
-              <button className="btn btn-ghost btn-sm" onClick={() => handleRotate(ep.id)} disabled={busy}>
+              <button type="button" className="btn btn-ghost btn-sm" onClick={() => handleRotate(ep.id)} disabled={busy}>
                 Rotate
               </button>
-              <button className="btn btn-ghost btn-sm" onClick={() => handleDelete(ep.id)}>
+              <button
+                type="button"
+                className="btn btn-ghost btn-sm"
+                onClick={() => handleDelete(ep.id)}
+                aria-label={`Delete webhook ${ep.description || ep.url}`}
+              >
                 Delete
               </button>
-              <button className="btn btn-ghost btn-sm" onClick={() => showDeliveries(ep.id)}>
+              <button
+                type="button"
+                className="btn btn-ghost btn-sm"
+                onClick={() => showDeliveries(ep.id)}
+                aria-expanded={openDeliveriesId === ep.id}
+                aria-controls={`deliveries-${ep.id}`}
+              >
                 Deliveries
               </button>
             </div>
@@ -400,6 +413,9 @@ export function WebhooksPanel() {
 
           {editingEvents === ep.id ? (
             <div
+              id={`events-${ep.id}`}
+              role="region"
+              aria-label={`Event types for ${ep.description || ep.url}`}
               style={{
                 marginTop: "12px",
                 padding: "10px 12px",
@@ -457,7 +473,12 @@ export function WebhooksPanel() {
           )}
 
           {openDeliveriesId === ep.id && deliveries[ep.id] && (
-            <div style={{ marginTop: "12px" }}>
+            <div
+              id={`deliveries-${ep.id}`}
+              role="region"
+              aria-label={`Deliveries for ${ep.description || ep.url}`}
+              style={{ marginTop: "12px" }}
+            >
               {deliveries[ep.id].length === 0 && (
                 <p className="dim" style={{ fontSize: "0.75rem" }}>No deliveries yet.</p>
               )}
