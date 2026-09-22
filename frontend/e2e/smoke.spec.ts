@@ -52,3 +52,12 @@ for (const { path, expectText } of PAGES) {
     expect(jsErrors, `console.error output on ${path}`).toEqual([]);
   });
 }
+
+test("ingest over-limit warning displays without submitting", async ({ page }) => {
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+  const editor = page.getByPlaceholder("Paste raw conversation, transcript, or unstructured notes…");
+  await expect(editor).toBeVisible({ timeout: 15_000 });
+  // ~50k tokens at the 1.33x heuristic: over the 50k single-pass ceiling.
+  await editor.fill("word ".repeat(40000));
+  await expect(page.getByText("OVER LIMIT", { exact: true })).toBeVisible({ timeout: 15_000 });
+});

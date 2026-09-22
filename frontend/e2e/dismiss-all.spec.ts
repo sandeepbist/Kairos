@@ -56,4 +56,9 @@ test("ingest -> dismiss all -> submit -> history", async ({ page }) => {
   await expect(page.getByText(batchId.slice(0, 8), { exact: false }).first()).toBeVisible({
     timeout: 30_000,
   });
+
+  // Delete the throwaway batch: confirm dialog accepted, row vanishes.
+  page.on("dialog", (dialog) => dialog.accept());
+  await page.getByRole("button", { name: `Delete batch ${batchId.slice(0, 8)} and its records` }).click();
+  await expect(page.getByText(batchId.slice(0, 8), { exact: false })).toHaveCount(0, { timeout: 15_000 });
 });
