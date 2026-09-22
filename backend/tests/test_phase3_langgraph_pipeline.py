@@ -203,3 +203,28 @@ async def test_route_node_survives_memory_failure(monkeypatch):
     out = await route_node(state)
     assert out["routed_items"][0]["suggested_tool"] == "jira"
     assert out["routed_items"][0]["confidence"] == 0.9
+
+
+@pytest.mark.asyncio
+async def test_stream_events_orders_and_closes_on_terminal():
+    """Seeded events yield in seq order and the generator terminates
+    once a terminal batch is drained (no hung SSE streams)."""
+    from app.db.session import async_session_factory
+    from app.db.models import BatchModel, BatchEventModel
+    from app.pipelines.events import stream_events
+
+    batch_id = str(uuid.uuid4())
+    async with async_session_factory() as session:
+        session.add(BatchModel(id=batch_id, raw_text="t", status="completed"))
+        await session.flush()
+        for seq, kind in [(2, "c"), (0, "a"), (1, "b")]:
+            session.add(BatchEventModel(
+                batch_id=batch_id, seq=seq, event_type=kind, message=f"m{seq}",
+            ))
+        await session.commit()
+
+    seen = []
+    async for event in stream_events(batch_id, poll_seconds=0.01, idle_limit=3):
+        seen.append(event)
+    assert [e["seq"] for e in seen] == [0, 1, 2]
+    assert [e["type"] for e in seen] == ["a", "b", "c"]
