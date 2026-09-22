@@ -598,3 +598,100 @@ async def test_gmail_poll_ingests_thread_and_advances_watermark(monkeypatch):
             await session.execute(select(BatchModel).where(BatchModel.source_type == "email_thread"))
         ).scalars().all()
         assert any("please file this ticket" in (b.raw_text or "") for b in batches)
+
+
+@pytest.mark.asyncio
+async def test_slack_failed_ingest_not_marked_seen(monkeypatch):
+    """A thread whose batch creation fails must stay unmarked so the next
+    cycle retries it — only successfully ingested messages join seen."""
+    from sqlalchemy import delete as _delete
+
+    from app.db.session import async_session_factory
+    from app.db.models import OAuthTokenModel
+    from app.temporal.activities import (
+        slack_socket_poll_activity,
+        _load_slack_seen_state,
+    )
+
+    monkeypatch.setenv("SLACK_APP_TOKEN", "xapp-test-token")
+    monkeypatch.setenv("SLACK_BOT_TOKEN", "xoxb-test-token")
+    monkeypatch.setenv("SLACK_LISTEN_SECONDS", "0.1")
+
+    from app.core.security import encrypt_token
+
+    async with async_session_factory() as session:
+        await session.execute(_delete(OAuthTokenModel).where(OAuthTokenModel.provider == "slack"))
+        session.add(OAuthTokenModel(
+            provider="slack",
+            access_token_enc=encrypt_token("xoxb-test-token"),
+        ))
+        await session.commit()
+
+    async def _boom_create(text, source_type, session):
+        if "FAILME" in text:
+            raise RuntimeError("ingest exploded")
+        return {"batch_id": "fake", "status": "processing"}
+
+    monkeypatch.setattr(
+        "app.api.endpoints.batches.create_and_start_batch", _boom_create
+    )
+
+    class FakeUsers:
+        data = {"user": {"real_name": "Alex"}}
+
+    class FakeWebClient:
+        def __init__(self, token=None):
+            pass
+
+        def users_info(self, user=None):
+            return FakeUsers()
+
+    class FakeSocketClient:
+        def __init__(self, app_token, web_client=None, auto_reconnect_enabled=True):
+            self.socket_mode_request_listeners = []
+            self.is_connected = False
+
+        def connect(self):
+            self.is_connected = True
+            from slack_sdk.socket_mode.request import SocketModeRequest
+
+            for i, (ts, txt) in enumerate([
+                ("1700000001.000100", "Alex, please file the checkout bug by Friday"),
+                ("1700000002.000200", "FAILME please file the checkout bug by Friday"),
+            ]):
+                ev = {
+                    "type": "message",
+                    "channel": "C1", "channel_type": "channel", "user": "U1",
+                    "text": txt, "ts": ts, "thread_ts": ts,
+                    "client_msg_id": f"t-{i}",
+                }
+                req = SocketModeRequest(
+                    type="events_api", envelope_id=f"env-{i}", payload={"event": ev},
+                )
+                for listener in self.socket_mode_request_listeners:
+                    listener(self, req)
+
+        def disconnect(self):
+            self.is_connected = False
+
+        def send_socket_mode_response(self, response):
+            pass
+
+    import slack_sdk
+    import slack_sdk.socket_mode
+    monkeypatch.setattr(slack_sdk, "WebClient", FakeWebClient, raising=False)
+    monkeypatch.setattr(
+        slack_sdk.socket_mode, "SocketModeClient", FakeSocketClient, raising=False
+    )
+
+    try:
+        result = await slack_socket_poll_activity()
+        assert result["polled"] is True
+        assert result["ingested"] == 1
+        seen = await _load_slack_seen_state()
+        assert "t-0" in seen
+        assert "t-1" not in seen
+    finally:
+        async with async_session_factory() as session:
+            await session.execute(_delete(OAuthTokenModel).where(OAuthTokenModel.provider == "slack"))
+            await session.commit()
