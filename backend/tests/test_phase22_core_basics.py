@@ -81,3 +81,24 @@ async def test_run_worker_retries_and_respects_cancel(monkeypatch):
     task.cancel()
     with pytest.raises(_asyncio.CancelledError):
         await task
+
+
+def test_database_url_quotes_special_chars_in_credentials():
+    """Generated passwords routinely contain @/:%; unquoted they corrupt
+    the URL authority split and the app cannot connect."""
+    from urllib.parse import urlparse, unquote
+
+    from app.config import Settings
+
+    s = Settings(
+        POSTGRES_USER="kairos_user",
+        POSTGRES_PASSWORD="p@ss:w%rd/!",
+        POSTGRES_HOST="localhost",
+        POSTGRES_PORT=5435,
+        POSTGRES_DB="kairos_db",
+    )
+    for url in (s.DATABASE_URL, s.SYNC_DATABASE_URL):
+        parsed = urlparse(url)
+        assert parsed.hostname == "localhost"
+        assert parsed.port == 5435
+        assert unquote(parsed.password or "") == "p@ss:w%rd/!"
