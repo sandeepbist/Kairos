@@ -34,6 +34,7 @@ FORCE_FRONTEND_BUILD="${FORCE_FRONTEND_BUILD:-0}"
 TEMPORAL_TASK_QUEUE="${TEMPORAL_TASK_QUEUE:-kairos-e2e-queue}"
 
 # Repo-root venv with backend requirements (python 3.14).
+log() { printf '[e2e-stack] %s\n' "$*" >&2; }
 if [ -x "$ROOT/.venv/bin/python" ]; then
   VENV_PY="$ROOT/.venv/bin/python"
 else
@@ -48,8 +49,6 @@ WORKER_PID=""
 BACKEND_PID=""
 FRONTEND_PID=""
 TEST_EXIT=0
-
-log() { printf '[e2e-stack] %s\n' "$*" >&2; }
 
 cleanup() {
   local code=$?
