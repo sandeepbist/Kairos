@@ -86,11 +86,12 @@ async def main() -> int:
             setattr(row, col, new_value)
         await session.commit()
 
-    rotated_tokens = sum(1 for r in rewrites if r[1].endswith("_enc") or r[1] == "secret_enc" or r[1] == "previous_secret_enc")
-    print(f"Rotated {len(oauth_rows)} oauth rows and {len(endpoint_rows)} webhook endpoints ({rotated_tokens} secret columns).")
+    rotated = len(rewrites)
+    print(f"Rotated {len(oauth_rows)} oauth rows and {len(endpoint_rows)} webhook endpoints ({rotated} secret columns).")
     print("Now set: ENCRYPTION_KEY=<new>  ENCRYPTION_KEY_PREVIOUS=<old>, restart the stack,")
     print("and remove _PREVIOUS after one verified poller cycle.")
     print("Back up the database dump AND the new key together — either alone is useless.")
+    print("Tip: pause the Gmail/Slack pollers during rotation — a token refresh racing this script is lost.")
     return 0
 
 
