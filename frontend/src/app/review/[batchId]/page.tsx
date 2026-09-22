@@ -39,7 +39,7 @@ export default function ReviewPage({
   const items = useMemo(() => batch?.items ?? [], [batch]);
   const isReviewable = batch?.status === "awaiting_approval";
 
-  const fetchStatus = async () => {
+  const fetchStatus = async (): Promise<boolean> => {
     try {
       const data = await getBatch(batchId);
       setBatch(data);
@@ -67,24 +67,37 @@ export default function ReviewPage({
     } catch (err) {
       setError(errorMessage(err, "Failed to load batch review"));
       setLoading(false);
+      return false;
     }
+    return true;
   };
 
   // Poll batch status until awaiting_approval (SSE augments this; polling
-  // remains the always-available fallback).
+  // remains the always-available fallback). Consecutive failures back off
+  // exponentially (1.5s → 30s cap) instead of hammering a down backend.
   useEffect(() => {
     fetchStatusRef.current = fetchStatus;
-    const initialFetch = setTimeout(fetchStatus, 0);
-    const interval: ReturnType<typeof setInterval> = setInterval(() => {
+    let failures = 0;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    let stopped = false;
+    const tick = async () => {
+      if (stopped) return;
       const status = batchStatusRef.current;
       if (!status || status === "processing" || status === "executing") {
-        fetchStatusRef.current();
+        const ok = await fetchStatus();
+        failures = ok ? 0 : failures + 1;
+      } else {
+        failures = 0;
       }
-    }, 1500);
+      if (!stopped) {
+        timer = setTimeout(tick, Math.min(1500 * 2 ** failures, 30000));
+      }
+    };
+    timer = setTimeout(tick, 0);
 
     return () => {
-      clearTimeout(initialFetch);
-      clearInterval(interval);
+      stopped = true;
+      if (timer) clearTimeout(timer);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [batchId]);
@@ -182,7 +195,10 @@ export default function ReviewPage({
         setFocusedIdx(next);
         // Ride the existing hover pipeline so the source pane follows.
         setHoveredSnippet(items[next].source_snippet);
-        cardRefs.current[items[next].id]?.scrollIntoView({ block: "nearest" });
+        const card = cardRefs.current[items[next].id];
+        card?.scrollIntoView({ block: "nearest" });
+        // Move DOM focus so screen readers follow the keyboard cursor.
+        card?.focus({ preventScroll: true });
         return;
       }
 
@@ -409,8 +425,8 @@ export default function ReviewPage({
             Hover a card to locate its quote in the source. Nothing executes until you approve.
           </p>
           {isReviewable && (
-            <p className="mono-label dim hide-narrow" style={{ marginTop: "10px" }}>
-              J/K move · A approve · X dismiss · E edit
+            <p className="mono-label dim" style={{ marginTop: "10px" }}>
+              J/K move · A/Enter approve · X/D dismiss · E edit
             </p>
           )}
         </div>
@@ -465,6 +481,8 @@ export default function ReviewPage({
           {batch?.items.map((item) => (
             <div
               key={item.id}
+              tabIndex={-1}
+              aria-label={`Action item: ${item.description}`}
               ref={(el) => {
                 cardRefs.current[item.id] = el;
               }}

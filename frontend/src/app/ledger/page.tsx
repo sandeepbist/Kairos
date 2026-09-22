@@ -146,8 +146,11 @@ export default function LedgerPage() {
       </div>
 
       {error && (
-        <div className="notice notice-error fade-in" role="alert" style={{ marginBottom: "16px" }}>
-          {error}
+        <div className="notice notice-error fade-in" role="alert" style={{ marginBottom: "16px", display: "flex", justifyContent: "space-between", alignItems: "center", gap: "12px" }}>
+          <span>{error}</span>
+          <button type="button" className="btn btn-ghost btn-sm" onClick={() => setError(null)} aria-label="Dismiss error">
+            Dismiss
+          </button>
         </div>
       )}
 
