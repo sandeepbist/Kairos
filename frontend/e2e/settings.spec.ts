@@ -65,3 +65,21 @@ test("settings renders the full credential vault, execution mode, and webhooks",
   await page.waitForTimeout(500);
   expect(consoleErrors).toEqual([]);
 });
+
+test("settings vault save + disconnect cycle", async ({ page }) => {
+  // Writes: save (1) + disconnect (1). Disconnect needs confirm accept.
+  await page.goto("/settings", { waitUntil: "domcontentloaded" });
+  const input = page.getByLabel("Google Gemini credential", { exact: true });
+  await expect(input).toBeVisible({ timeout: 20_000 });
+  await input.fill("test-gemini-key");
+  await input.press("Enter");
+  await expect(
+    page.getByText("gemini credential encrypted into the vault.", { exact: true })
+  ).toBeVisible({ timeout: 15_000 });
+
+  page.on("dialog", (dialog) => dialog.accept());
+  await page.getByRole("button", { name: "Disconnect", exact: true }).click();
+  await expect(
+    page.getByText("gemini credential removed from the vault.", { exact: true })
+  ).toBeVisible({ timeout: 15_000 });
+});
