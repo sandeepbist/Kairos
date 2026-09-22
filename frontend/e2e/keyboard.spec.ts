@@ -47,4 +47,15 @@ test("keyboard review: j focuses cards, x dismisses focused", async ({ page }) =
     page.getByRole("button", { name: "Dismissed", exact: true }).first()
   ).toBeVisible({ timeout: 15_000 });
   await expect(page.getByText("1 dismissed", { exact: true })).toBeVisible();
+
+  // e opens the payload editor on the focused card with focus inside
+  // the dialog; Escape closes and returns focus to the card.
+  await page.keyboard.press("e");
+  const dialog = page.getByRole("dialog");
+  await expect(dialog).toBeVisible({ timeout: 15_000 });
+  const focusedTag = await page.evaluate(() => document.activeElement?.tagName);
+  expect(["INPUT", "SELECT", "TEXTAREA"]).toContain(focusedTag);
+  await page.keyboard.press("Escape");
+  await expect(dialog).toBeHidden();
+  await expect(cards.nth(1)).toBeFocused();
 });
